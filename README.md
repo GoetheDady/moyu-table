@@ -1,73 +1,131 @@
-# React + TypeScript + Vite
+# moyu-table
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+moyu-table 是一个给上班摸鱼时使用的无限格子墙。
 
-Currently, two official plugins are available:
+用户可以像逛地图一样拖拽、缩放和跳转坐标，看看别人留在格子里的碎片内容；也可以把自己突然想到的事情、笔记、想法、吐槽或树洞内容写进某个格子里。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+这里的“无限格子墙”指一张可以不断向四周探索的二维坐标网格，每个格子都可以承载一段内容。它不是传统办公表格，也不是严肃笔记工具，而是一个轻松、可逛、可写、偶尔走心的摸鱼空间。
 
-## React Compiler
+## 产品定位
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+一句话定位：
 
-## Expanding the ESLint configuration
+> 上班摸鱼时可以随便逛逛、写想法、记笔记，也能偶尔当树洞用的无限格子墙。
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+核心体验：
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- 逛：无聊时可以拖动画布、缩放视角、随机或按坐标探索内容。
+- 写：有想法时可以选一个空格子，把碎片内容写进去。
+- 看：点开已有格子，阅读别人或自己留下的内容。
+- 回访：后续可以通过坐标、收藏或个人记录找回看过和写过的内容。
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+“树洞”只是其中一种内容类型。产品主轴不是匿名倾诉社区，而是轻量内容空间：可以记录、可以探索、可以消磨上班空隙里的无聊时间。
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 内容类型
+
+当前第一版以文字为主，后续可以扩展更多表达方式：
+
+- 随想：突然冒出来的一句话、灵感、碎碎念。
+- 笔记：读到、看到、学到的小内容。
+- 提问：把一个问题放到格子里，等待别人路过。
+- 树洞：不一定想发到熟人社交平台上的匿名表达。
+- 图片、艺术字、涂鸦：后续用于增强趣味性和表达自由度。
+
+这里的“内容类型”指用户写入格子时选择的分类。分类会影响封面样式、阅读面板和后续推荐方式，但不应该把产品整体变成某一种单一社区。
+
+## 当前功能
+
+- 透视网格画布：用 Canvas 绘制带空间感的格子墙。
+- 拖拽浏览：按住画布拖动，移动当前观察位置。
+- 滚轮缩放：以鼠标位置为锚点缩放画布。
+- 坐标跳转：输入 x、y 坐标后平滑移动到目标格子。
+- 写入格子：点击空格子后输入文字，写入后占用该坐标。
+- 阅读格子：点击已有内容的格子，查看正文、坐标和写入时间。
+- 自动封面：根据内容第一行生成格子封面标题。
+
+Canvas 是浏览器提供的绘图画布，适合直接绘制网格、投影和大量视觉元素。透视网格指近处格子更大、远处格子更小的视觉效果，用来制造类似地图或空间墙面的感觉。
+
+## 近期方向
+
+短期目标是完善一个可验证核心玩法的 MVP。
+
+MVP 是 Minimum Viable Product，意思是“最小可用产品”：先做出足够验证方向的一版，而不是一开始就做完整社区、复杂账号体系或后台治理。
+
+优先级建议：
+
+1. 让“逛”更有趣：随机跳转、附近有内容提示、最新格子入口。
+2. 让“写”更轻：默认写随想，少填表，少选择。
+3. 让“看”更舒服：更好的阅读面板、封面样式和内容类型展示。
+4. 加回访能力：我的格子、收藏格子、最近看过。
+5. 再考虑轻互动：点亮、路过、我也有同感。
+
+暂不优先做治理功能。治理功能指举报、审核、封禁、敏感内容处理等社区管理能力，它们适合在公开用户量上来之后再规划。
+
+## 设计方向
+
+整体气质应该是：
+
+- 轻松，而不是沉重。
+- 可探索，而不是信息流刷屏。
+- 有空间感，而不是普通帖子列表。
+- 能记录，也能闲逛。
+- 偶尔像树洞，但不完全依靠树洞功能。
+
+视觉上可以接近“夜间地图 + 发光格子 + 轻量内容封面”。格子墙是主体，内容卡片是散落在墙上的小发现。界面不应该太像办公软件，也不应该太像传统匿名论坛。
+
+## 当前实现
+
+- React：用于构建前端界面的组件框架。
+- TypeScript：给 JavaScript 增加类型检查，减少字段和参数用错的问题。
+- Vite：前端开发和打包工具，负责本地启动、热更新和构建产物。
+- Tailwind CSS：通过工具类快速写样式的 CSS 框架。
+- Vitest：测试框架，用来验证坐标、投影、封面生成等核心逻辑。
+
+当前代码仍是 Vite 单页应用。单页应用指主要交互都在一个浏览器页面里完成，不依赖频繁页面跳转。
+
+## 目标技术方案
+
+后续计划迁移到 Next.js + PostgreSQL + Prisma。
+
+- Next.js：用于承载页面、后端接口和后续分享页。
+- PostgreSQL：用于保存格子、坐标、内容、收藏和匿名身份等数据。
+- Prisma：用于在 TypeScript 代码中读写 PostgreSQL。
+- Canvas：继续负责无限格子墙、透视网格和大量视觉元素绘制。
+
+Prisma 是 ORM。ORM 指“对象关系映射工具”，作用是让代码用类型安全的方式操作数据库表，减少手写 SQL 的重复工作。
+
+更完整的技术方案见 [docs/technical-plan.md](docs/technical-plan.md)。架构决策记录见 [docs/adr/0001-use-nextjs-postgresql-prisma.md](docs/adr/0001-use-nextjs-postgresql-prisma.md)。
+
+## 本地开发
+
+安装依赖：
+
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+启动开发环境：
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm dev
 ```
+
+执行构建：
+
+```bash
+pnpm build
+```
+
+运行测试：
+
+```bash
+pnpm test
+```
+
+运行架构约束检查：
+
+```bash
+pnpm check:architecture
+```
+
+“架构约束检查”指一些用于保护核心规则的测试，比如坐标方向不能反、跳转目标需要居中、透视网格不能绘制异常大的格子。

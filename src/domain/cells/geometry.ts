@@ -4,8 +4,8 @@ import {
   MAX_CELL_DRAW_WIDTH,
   PERSPECTIVE_STRENGTH,
   PERSPECTIVE_Y_SCALE,
-} from './constants.js'
-import type { Camera, CellRect, Coord } from './types.js'
+} from './constants'
+import type { Camera, CellRect, Coord } from './types'
 
 /** 表示浏览器中可绘制区域的尺寸。 */
 export type Viewport = {

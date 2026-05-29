@@ -1,6 +1,6 @@
-import { CONTENT_LIMIT } from './constants.js'
-import { coordKey } from './geometry.js'
-import type { Cell, CellBlock, CellTone, Coord } from './types.js'
+import { CONTENT_LIMIT } from './constants'
+import { coordKey } from './geometry'
+import type { Cell, CellBlock, CellTone, Coord } from './types'
 
 /** 表示一次写入单元格操作的结果。 */
 export type CellAuthoringResult =
@@ -51,7 +51,7 @@ export function authorCell(cells: Cell[], coord: Coord, draft: string, now = () 
       id: createCellId(coord, createdAt),
       blocks: [createTextBlock(content, createdAt)],
       createdAt,
-      tone: pickTone(coord),
+      tone: getCellToneForCoord(coord),
     },
   }
 }
@@ -88,7 +88,7 @@ function createTextBlock(content: string, createdAt: string): CellBlock {
  * @param coord 单元格坐标。
  * @returns 与坐标绑定的色调名称。
  */
-function pickTone(coord: Coord): CellTone {
+export function getCellToneForCoord(coord: Coord): CellTone {
   const tones: CellTone[] = ['mint', 'amber', 'cyan', 'coral']
   return tones[Math.abs(coord.x * 7 + coord.y * 13) % tones.length]
 }

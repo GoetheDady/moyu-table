@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import { initialCells } from '../src/data/demoCells.js'
-import { getCellPreview } from '../src/lib/cellPreview.js'
-import { CELL_SIZE } from '../src/lib/constants.js'
+import { initialCells } from '../src/data/demoCells'
+import { getCellPreview } from '../src/domain/cells/cellPreview'
+import { CELL_SIZE } from '../src/domain/cells/constants'
 import {
   cameraForCellCenter,
   cellBoundsInWorld,
   createPerspectiveGrid,
   worldToCellCoord,
-} from '../src/lib/geometry.js'
-import { getProjectedTextBox } from '../src/lib/text.js'
-import { beginWallPointer, hoverWallAtPoint } from '../src/lib/wallInteraction.js'
+} from '../src/domain/cells/geometry'
+import { getProjectedTextBox } from '../src/domain/cells/text'
+import { beginWallPointer, hoverWallAtPoint } from '../src/features/wall/wallInteraction'
 
 describe('架构约束检查', () => {
   /**

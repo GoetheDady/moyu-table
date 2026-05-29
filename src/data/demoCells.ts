@@ -1,4 +1,4 @@
-import type { Cell } from '../lib/types.js'
+import type { Cell } from '../domain/cells/types'
 
 /**
  * 应用启动时展示的示例单元格数据。

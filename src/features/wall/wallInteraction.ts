@@ -1,7 +1,7 @@
-import { MAX_ZOOM, MIN_ZOOM } from './constants.js'
-import { clamp, coordKey } from './geometry.js'
-import type { PerspectiveGrid } from './geometry.js'
-import type { Camera, Cell, Coord, Selection } from './types.js'
+import { MAX_ZOOM, MIN_ZOOM } from '../../domain/cells/constants'
+import { clamp, coordKey } from '../../domain/cells/geometry'
+import type { PerspectiveGrid } from '../../domain/cells/geometry'
+import type { Camera, Cell, Coord, Selection } from '../../domain/cells/types'
 
 type Point = {
   x: number

@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Cell {
+  id        String   @id @default(cuid())
+  x         Int
+  y         Int
+  type      CellType @default(THOUGHT)
+  title     String?
+  content   String
+  authorId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([x, y])
+  @@index([x, y])
+  @@index([createdAt])
+}
+
+enum CellType {
+  THOUGHT
+  NOTE
+  QUESTION
+  TREE_HOLE
+}

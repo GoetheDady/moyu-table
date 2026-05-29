@@ -1,7 +1,7 @@
-import { getDraftAuthoringState } from '../lib/cellAuthoring.js'
-import { getBlockContent, getCellPreview, getPrimaryBlock } from '../lib/cellPreview.js'
-import { formatCreatedAt } from '../lib/text.js'
-import type { Selection } from '../lib/types.js'
+import { getDraftAuthoringState } from '../../domain/cells/cellAuthoring'
+import { getBlockContent, getCellPreview, getPrimaryBlock } from '../../domain/cells/cellPreview'
+import { formatCreatedAt } from '../../domain/cells/text'
+import type { Selection } from '../../domain/cells/types'
 
 /** FloatingPanels 组件需要的编辑内容、选中态和事件回调。 */
 type FloatingPanelsProps = {

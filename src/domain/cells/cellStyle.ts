@@ -1,4 +1,4 @@
-import type { CellTone } from './types.js'
+import type { CellTone } from './types'
 
 /**
  * 表示单元格色调对应的一整套绘制颜色。

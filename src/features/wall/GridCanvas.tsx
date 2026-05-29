@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { sparkles } from '../data/demoCells.js'
-import { getCellPreview } from '../lib/cellPreview.js'
-import { CELL_SIZE } from '../lib/constants.js'
-import { toneMap } from '../lib/cellStyle.js'
-import type { CellToneStyle } from '../lib/cellStyle.js'
-import { clamp, drawCellPath } from '../lib/geometry.js'
-import type { PerspectiveGrid } from '../lib/geometry.js'
-import { drawWrappedText, getProjectedTextBox } from '../lib/text.js'
+import { sparkles } from '../../data/demoCells'
+import { getCellPreview } from '../../domain/cells/cellPreview'
+import { CELL_SIZE } from '../../domain/cells/constants'
+import { toneMap } from '../../domain/cells/cellStyle'
+import type { CellToneStyle } from '../../domain/cells/cellStyle'
+import { clamp, drawCellPath } from '../../domain/cells/geometry'
+import type { PerspectiveGrid } from '../../domain/cells/geometry'
+import { drawWrappedText, getProjectedTextBox } from '../../domain/cells/text'
 import {
   beginWallPointer,
   hoverWallAtPoint,
@@ -14,8 +14,10 @@ import {
   releaseWallPointer,
   zoomWallAtPoint,
   type WallPointerSession,
-} from '../lib/wallInteraction.js'
-import type { Camera, Cell, Coord, Selection } from '../lib/types.js'
+} from './wallInteraction'
+import type { Camera, Cell, Coord, Selection } from '../../domain/cells/types'
+
+const CELL_INTRO_ANIMATION_MS = 520
 
 /** GridCanvas 组件需要的外部状态和回调。 */
 type GridCanvasProps = {
@@ -50,6 +52,8 @@ export function GridCanvas({
   onZoomChange,
 }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const cellIntroStartedAtRef = useRef(new Map<string, number>())
+  const previousCellIdsRef = useRef(new Set<string>())
   const dragRef = useRef<WallPointerSession>({
     pointerId: -1,
     lastPoint: { x: 0, y: 0 },
@@ -57,6 +61,25 @@ export function GridCanvas({
     totalDistance: 0,
     isDragging: false,
   })
+
+  useEffect(() => {
+    const now = performance.now()
+    const nextCellIds = new Set(cells.map((cell) => cell.id))
+
+    for (const cell of cells) {
+      if (!previousCellIdsRef.current.has(cell.id)) {
+        cellIntroStartedAtRef.current.set(cell.id, now)
+      }
+    }
+
+    for (const cellId of cellIntroStartedAtRef.current.keys()) {
+      if (!nextCellIds.has(cellId)) {
+        cellIntroStartedAtRef.current.delete(cellId)
+      }
+    }
+
+    previousCellIdsRef.current = nextCellIds
+  }, [cells])
 
   /**
    * 绘制画布背景、网格、装饰点、已有单元格和当前焦点单元格。
@@ -172,31 +195,36 @@ export function GridCanvas({
      * 绘制一个已有内容的单元格封面。
      *
      * @param cell 需要绘制的单元格数据。
+     * @param introProgress 单元格入场动画进度，范围为 0 到 1。
      * @returns 无返回值，副作用是在 Canvas 上绘制封面卡片、标题和类型标签。
      */
-    const drawOccupiedCell = (cell: Cell) => {
+    const drawOccupiedCell = (cell: Cell, introProgress: number) => {
       const rect = grid.cellRect(cell)
       if (!grid.isDrawableCell(rect)) return
 
       const tone = toneMap[cell.tone]
-      const textBox = getProjectedTextBox(rect.points)
+      const animatedPoints = getIntroPoints(rect.points, introProgress)
+      const textBox = getProjectedTextBox(animatedPoints)
       const inset = Math.max(1, 1.4 * grid.zoom)
       const paddingX = clamp(textBox.width * 0.11, 5, 24)
       const paddingY = clamp(textBox.height * 0.16, 4, 22)
       const preview = getCellPreview(cell)
+      const alpha = clamp(introProgress, 0, 1)
 
       context.save()
+      context.globalAlpha = alpha
       context.shadowColor = tone.glow
-      context.shadowBlur = 28 * grid.zoom
+      context.shadowBlur = (28 + (1 - introProgress) * 34) * grid.zoom
       context.fillStyle = createCoverGradient(context, textBox, tone)
       context.strokeStyle = tone.stroke
       context.lineWidth = 1
-      drawCellPath(context, rect.points, inset)
+      drawCellPath(context, animatedPoints, inset)
       context.fill()
       context.stroke()
       context.restore()
 
       context.save()
+      context.globalAlpha = alpha
       drawProjectedCover(context, preview.title, preview.subtitle, preview.label, textBox, paddingX, paddingY, tone)
       context.restore()
     }
@@ -224,21 +252,69 @@ export function GridCanvas({
       context.restore()
     }
 
-    context.clearRect(0, 0, grid.viewport.width, grid.viewport.height)
-    drawBackground()
-    drawGrid()
-    drawSparkles()
+    /**
+     * 绘制当前帧，并在仍有入场动画时继续请求下一帧。
+     *
+     * @param now 当前帧时间戳。
+     * @returns 无返回值，副作用是在 Canvas 上绘制当前画面。
+     */
+    const drawFrame = (now: number) => {
+      context.clearRect(0, 0, grid.viewport.width, grid.viewport.height)
+      drawBackground()
+      drawGrid()
+      drawSparkles()
 
-    for (const cell of cells) {
-      drawOccupiedCell(cell)
+      let hasActiveIntroAnimation = false
+
+      for (const cell of cells) {
+        const introProgress = getCellIntroProgress(cell.id, now)
+        if (introProgress < 1) {
+          hasActiveIntroAnimation = true
+        }
+
+        drawOccupiedCell(cell, introProgress)
+      }
+
+      if (hoveredCoord && !cells.some((cell) => cell.x === hoveredCoord.x && cell.y === hoveredCoord.y)) {
+        drawFocusedCell(hoveredCoord, 'hover')
+      }
+
+      if (selection?.mode === 'edit') {
+        drawFocusedCell(selection.coord, 'active')
+      }
+
+      if (hasActiveIntroAnimation) {
+        animationFrameId = requestAnimationFrame(drawFrame)
+      }
     }
 
-    if (hoveredCoord && !cells.some((cell) => cell.x === hoveredCoord.x && cell.y === hoveredCoord.y)) {
-      drawFocusedCell(hoveredCoord, 'hover')
+    /**
+     * 获取指定单元格的入场动画进度。
+     *
+     * @param cellId 单元格 id。
+     * @param now 当前帧时间戳。
+     * @returns 缓动后的动画进度，范围为 0 到 1。
+     */
+    const getCellIntroProgress = (cellId: string, now: number) => {
+      const startedAt = cellIntroStartedAtRef.current.get(cellId)
+      if (startedAt === undefined) return 1
+
+      const progress = clamp((now - startedAt) / CELL_INTRO_ANIMATION_MS, 0, 1)
+
+      if (progress >= 1) {
+        cellIntroStartedAtRef.current.delete(cellId)
+      }
+
+      return easeOutCubic(progress)
     }
 
-    if (selection?.mode === 'edit') {
-      drawFocusedCell(selection.coord, 'active')
+    let animationFrameId: number | null = null
+    drawFrame(performance.now())
+
+    return () => {
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId)
+      }
     }
   }, [cells, grid, hoveredCoord, selection])
 
@@ -407,4 +483,32 @@ function drawProjectedCover(
   context.fillText(label, paddingX + labelSize * 0.72, box.height - paddingY - labelSize * 1.45)
 
   context.restore()
+}
+
+/**
+ * 根据入场动画进度把单元格四个角点从中心向外展开。
+ *
+ * @param points 单元格投影后的四个角点。
+ * @param progress 入场动画进度，范围为 0 到 1。
+ * @returns 缩放后的四个角点。
+ */
+function getIntroPoints(points: { x: number; y: number }[], progress: number) {
+  const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length
+  const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length
+  const scale = 0.86 + progress * 0.14
+
+  return points.map((point) => ({
+    x: centerX + (point.x - centerX) * scale,
+    y: centerY + (point.y - centerY) * scale,
+  }))
+}
+
+/**
+ * 计算缓出的三次方动画进度。
+ *
+ * @param progress 原始线性进度，范围为 0 到 1。
+ * @returns 缓动后的进度，开头快、结尾慢。
+ */
+function easeOutCubic(progress: number) {
+  return 1 - (1 - progress) ** 3
 }

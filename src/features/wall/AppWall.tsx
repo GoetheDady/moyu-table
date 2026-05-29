@@ -1,30 +1,42 @@
+'use client'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FloatingPanels } from './components/FloatingPanels.js'
-import { GridCanvas } from './components/GridCanvas.js'
-import { JumpDock } from './components/JumpDock.js'
-import { initialCells } from './data/demoCells.js'
-import { authorCell } from './lib/cellAuthoring.js'
-import { JUMP_ANIMATION_MS } from './lib/constants.js'
+import { authorCell } from '../../domain/cells/cellAuthoring'
+import { JUMP_ANIMATION_MS } from '../../domain/cells/constants'
 import {
   cameraForCellCenter,
   clamp,
   createPerspectiveGrid,
   easeInOutCubic,
-} from './lib/geometry.js'
-import type { Camera, Cell, CellRect, Coord, Selection } from './lib/types.js'
+} from '../../domain/cells/geometry'
+import type { Camera, Cell, CellRect, Coord, Selection } from '../../domain/cells/types'
+import { FloatingPanels } from './FloatingPanels'
+import { GridCanvas } from './GridCanvas'
+import { JumpDock } from './JumpDock'
+
+const initialViewport = { width: 1280, height: 720 }
+const CELL_FETCH_DEBOUNCE_MS = 220
+
+type CellsResponse = {
+  cells: Cell[]
+}
+
+type CreateCellResponse = {
+  cell: Cell
+}
 
 /**
  * 渲染 moyu-table 的主应用，并维护网格内容、相机、缩放和选中态。
  *
  * @returns 应用的根 React 节点。
  */
-function App() {
+function AppWall() {
   const jumpAnimationRef = useRef<number | null>(null)
 
-  const [cells, setCells] = useState<Cell[]>(initialCells)
+  const [cells, setCells] = useState<Cell[]>([])
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 32 })
   const [zoom, setZoom] = useState(1)
-  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight })
+  const [viewport, setViewport] = useState(initialViewport)
   const [hoveredCoord, setHoveredCoord] = useState<Coord | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [draft, setDraft] = useState('')
@@ -58,6 +70,46 @@ function App() {
   }, [])
 
   useEffect(() => cancelJumpAnimation, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const range = grid.visibleRange()
+
+    /**
+     * 从后端读取当前可见范围内的格子。
+     *
+     * @returns Promise，无显式返回值；副作用是用接口数据替换当前画布格子。
+     */
+    const loadVisibleCells = async () => {
+      const params = new URLSearchParams({
+        minX: String(range.startX),
+        maxX: String(range.endX),
+        minY: String(range.startY),
+        maxY: String(range.endY),
+      })
+      try {
+        const response = await fetch(`/api/cells?${params.toString()}`, { signal: controller.signal })
+
+        if (!response.ok) return
+
+        const result = (await response.json()) as CellsResponse
+        setCells(result.cells)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+
+        throw error
+      }
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadVisibleCells()
+    }, CELL_FETCH_DEBOUNCE_MS)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeoutId)
+    }
+  }, [grid])
 
   /**
    * 平滑移动相机到目标位置。
@@ -115,21 +167,35 @@ function App() {
    *
    * @returns 无返回值，副作用是可能新增单元格、切换到阅读态并清空草稿。
    */
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selection || selection.mode !== 'edit') return
 
     const result = authorCell(cells, selection.coord, draft)
     if (result.status !== 'created') return
 
+    const response = await fetch('/api/cells', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        x: selection.coord.x,
+        y: selection.coord.y,
+        type: 'THOUGHT',
+        content: draft,
+      }),
+    })
+
+    if (!response.ok) return
+
+    const created = ((await response.json()) as CreateCellResponse).cell
+
     setCells((currentCells) => {
-      const currentResult = authorCell(currentCells, selection.coord, draft)
-      if (currentResult.status !== 'created') {
+      if (currentCells.some((cell) => cell.x === created.x && cell.y === created.y)) {
         return currentCells
       }
 
-      return [...currentCells, currentResult.cell]
+      return [...currentCells, created]
     })
-    setSelection({ mode: 'read', coord: selection.coord, cell: result.cell })
+    setSelection({ mode: 'read', coord: selection.coord, cell: created })
     setDraft('')
   }
 
@@ -194,22 +260,24 @@ function App() {
  */
 function getPanelStyle(rect: CellRect, width: number, height: number) {
   const gap = 18
+  const viewportWidth = typeof window === 'undefined' ? initialViewport.width : window.innerWidth
+  const viewportHeight = typeof window === 'undefined' ? initialViewport.height : window.innerHeight
   let left = rect.right + gap
   let top = rect.top + 2
 
-  if (left + width > window.innerWidth - 16) {
+  if (left + width > viewportWidth - 16) {
     left = rect.left - width - gap
   }
 
-  if (top + height > window.innerHeight - 16) {
-    top = window.innerHeight - height - 16
+  if (top + height > viewportHeight - 16) {
+    top = viewportHeight - height - 16
   }
 
   return {
-    left: `${clamp(left, 16, window.innerWidth - width - 16)}px`,
-    top: `${clamp(top, 16, window.innerHeight - height - 16)}px`,
+    left: `${clamp(left, 16, viewportWidth - width - 16)}px`,
+    top: `${clamp(top, 16, viewportHeight - height - 16)}px`,
     width: `${width}px`,
   }
 }
 
-export default App
+export default AppWall

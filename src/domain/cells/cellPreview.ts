@@ -1,4 +1,4 @@
-import type { Cell, CellBlock, CellBlockType, CellPreview } from './types.js'
+import type { Cell, CellBlock, CellBlockType, CellPreview } from './types'
 
 const TYPE_LABELS: Record<CellBlockType, string> = {
   text: '文字',
