@@ -135,7 +135,7 @@ export function GridCanvas({
      * @returns 无返回值，副作用是在 Canvas 上绘制横纵网格线。
      */
     const drawGrid = () => {
-      const { startX, endX, startY, endY } = grid.visibleRange()
+      const { startX, endX, startY, endY } = grid.visibleWorldGridRange()
 
       context.lineWidth = 1
 

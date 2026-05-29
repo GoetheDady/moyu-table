@@ -20,12 +20,28 @@ export type GridView = {
   viewport: Viewport
 }
 
-/** 表示当前视口需要覆盖的网格坐标范围。 */
-export type GridRange = {
+/**
+ * 表示当前视口绘制网格线时需要覆盖的世界网格索引范围。
+ *
+ * y 使用世界坐标方向，适合 Canvas 绘制网格线，不适合直接作为格子查询坐标。
+ */
+export type WorldGridRange = {
   startX: number
   endX: number
   startY: number
   endY: number
+}
+
+/**
+ * 表示当前视口读取格子内容时需要覆盖的单元格坐标范围。
+ *
+ * y 使用用户可见的单元格坐标方向，向上递增，适合传给后端查询 Cell。
+ */
+export type CellRange = {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
 }
 
 /** 表示二维平面中的一个点。 */
@@ -139,7 +155,8 @@ export function createPerspectiveGrid(view: GridView) {
     cameraForAnchor: (worldPoint: Point, screenPoint: Point, nextZoom = zoom) =>
       getCameraForAnchor(worldPoint, screenPoint, nextZoom, viewport.width, viewport.height),
     isDrawableCell: (rect: CellRect) => isDrawableCell(rect, viewport.width, viewport.height),
-    visibleRange: (padding = 3) => getVisibleGridRange(view, padding),
+    visibleWorldGridRange: (padding = 3) => getVisibleWorldGridRange(view, padding),
+    visibleCellRange: (padding = 3) => getVisibleCellRange(view, padding),
   }
 }
 
@@ -147,19 +164,14 @@ export function createPerspectiveGrid(view: GridView) {
 export type PerspectiveGrid = ReturnType<typeof createPerspectiveGrid>
 
 /**
- * 计算当前视口需要绘制的网格坐标范围。
+ * 计算当前视口需要绘制的世界网格线索引范围。
  *
  * @param view 当前相机、缩放和视口状态。
  * @param padding 额外扩展的网格数量，用来避免边缘露空。
- * @returns 可见网格的起止坐标范围。
+ * @returns 可见世界网格线的起止索引范围；y 保持世界坐标方向。
  */
-export function getVisibleGridRange({ camera, zoom, viewport }: GridView, padding = 3): GridRange {
-  const visibleCorners = [
-    screenToWorldPoint(0, 0, camera, zoom, viewport.width, viewport.height),
-    screenToWorldPoint(viewport.width, 0, camera, zoom, viewport.width, viewport.height),
-    screenToWorldPoint(0, viewport.height, camera, zoom, viewport.width, viewport.height),
-    screenToWorldPoint(viewport.width, viewport.height, camera, zoom, viewport.width, viewport.height),
-  ]
+export function getVisibleWorldGridRange(view: GridView, padding = 3): WorldGridRange {
+  const visibleCorners = getVisibleWorldCorners(view)
   const visibleXs = visibleCorners.map((point) => point.x)
   const visibleYs = visibleCorners.map((point) => point.y)
 
@@ -169,6 +181,41 @@ export function getVisibleGridRange({ camera, zoom, viewport }: GridView, paddin
     startY: Math.floor(Math.min(...visibleYs) / CELL_SIZE) - padding,
     endY: Math.ceil(Math.max(...visibleYs) / CELL_SIZE) + padding,
   }
+}
+
+/**
+ * 计算当前视口需要读取内容的单元格坐标范围。
+ *
+ * @param view 当前相机、缩放和视口状态。
+ * @param padding 额外扩展的格子数量，用来提前加载视口边缘附近内容。
+ * @returns 可直接传给后端 Cell 查询的单元格坐标范围；y 使用向上递增的单元格坐标。
+ */
+export function getVisibleCellRange(view: GridView, padding = 3): CellRange {
+  const visibleCorners = getVisibleWorldCorners(view)
+  const visibleXs = visibleCorners.map((point) => point.x)
+  const visibleCellYs = visibleCorners.map((point) => worldToCellY(point.y))
+
+  return {
+    minX: Math.floor(Math.min(...visibleXs) / CELL_SIZE) - padding,
+    maxX: Math.ceil(Math.max(...visibleXs) / CELL_SIZE) + padding,
+    minY: Math.floor(Math.min(...visibleCellYs) / CELL_SIZE) - padding,
+    maxY: Math.ceil(Math.max(...visibleCellYs) / CELL_SIZE) + padding,
+  }
+}
+
+/**
+ * 计算当前视口四个角在世界坐标系中的位置。
+ *
+ * @param view 当前相机、缩放和视口状态。
+ * @returns 视口左上、右上、左下、右下四个屏幕角对应的世界坐标点。
+ */
+function getVisibleWorldCorners({ camera, zoom, viewport }: GridView): Point[] {
+  return [
+    screenToWorldPoint(0, 0, camera, zoom, viewport.width, viewport.height),
+    screenToWorldPoint(viewport.width, 0, camera, zoom, viewport.width, viewport.height),
+    screenToWorldPoint(0, viewport.height, camera, zoom, viewport.width, viewport.height),
+    screenToWorldPoint(viewport.width, viewport.height, camera, zoom, viewport.width, viewport.height),
+  ]
 }
 
 /**

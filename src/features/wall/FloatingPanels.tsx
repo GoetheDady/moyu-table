@@ -5,7 +5,9 @@ import type { Selection } from '../../domain/cells/types'
 
 /** FloatingPanels 组件需要的编辑内容、选中态和事件回调。 */
 type FloatingPanelsProps = {
+  authoringError: string | null
   draft: string
+  isSubmitting: boolean
   panelStyle?: React.CSSProperties
   selection: Selection | null
   onCancelEdit: () => void
@@ -20,7 +22,9 @@ type FloatingPanelsProps = {
  * @returns 编辑面板、阅读面板或空内容。
  */
 export function FloatingPanels({
+  authoringError,
   draft,
+  isSubmitting,
   panelStyle,
   selection,
   onCancelEdit,
@@ -48,6 +52,16 @@ export function FloatingPanels({
         <div className="pointer-events-none mt-[-30px] pr-3 text-right text-sm leading-none text-[#e0e8edb8]">
           {draftState.length} / {draftState.limit}
         </div>
+        {authoringError ? (
+          <p
+            role="alert"
+            className="mt-3 min-h-5 text-[13px] font-semibold leading-[1.45] text-[#ffd28f]"
+          >
+            {authoringError}
+          </p>
+        ) : (
+          <div className="mt-3 min-h-5" />
+        )}
         <div className="mt-5 grid grid-cols-[1fr_1.28fr] gap-3">
           <button
             type="button"
@@ -60,9 +74,9 @@ export function FloatingPanels({
             type="button"
             className="h-11 rounded-md border-0 bg-linear-to-b from-moyu-primary-top to-moyu-primary-bottom text-[15px] font-semibold leading-none text-moyu-primary-text shadow-moyu-primary hover:from-moyu-primary-hover-top hover:to-moyu-primary-hover-bottom disabled:cursor-not-allowed disabled:bg-[rgba(120,154,142,0.5)] disabled:bg-none disabled:text-[#07362980] disabled:shadow-none"
             onClick={onSubmit}
-            disabled={!draftState.canSubmit}
+            disabled={!draftState.canSubmit || isSubmitting}
           >
-            写入并锁定
+            {isSubmitting ? '写入中...' : '写入并锁定'}
           </button>
         </div>
       </section>

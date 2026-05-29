@@ -68,6 +68,35 @@ describe('架构约束检查', () => {
   })
 
   /**
+   * 验证用于读取格子内容的可见范围使用单元格坐标方向。
+   *
+   * 单元格坐标是用户看到的整数坐标，y 向上递增；世界坐标是画布投影使用的连续坐标，y 方向相反。
+   * 这个测试防止绘制网格线的世界范围被误用为后端格子查询范围。
+   */
+  test('格子读取范围包含当前居中的目标格子', () => {
+    const viewport = { width: 2048, height: 1058 }
+    const zoom = 1
+    const targets = [
+      { x: -10, y: 13 },
+      { x: 24, y: -8 },
+    ]
+
+    for (const target of targets) {
+      const grid = createPerspectiveGrid({
+        camera: cameraForCellCenter(target),
+        zoom,
+        viewport,
+      })
+      const range = grid.visibleCellRange()
+
+      expect(range.minX, `target ${JSON.stringify(target)} minX`).toBeLessThanOrEqual(target.x)
+      expect(range.maxX, `target ${JSON.stringify(target)} maxX`).toBeGreaterThanOrEqual(target.x)
+      expect(range.minY, `target ${JSON.stringify(target)} minY`).toBeLessThanOrEqual(target.y)
+      expect(range.maxY, `target ${JSON.stringify(target)} maxY`).toBeGreaterThanOrEqual(target.y)
+    }
+  })
+
+  /**
    * 验证透视网格在屏幕右上角仍有足够线条覆盖，并且拖拽状态不会触发墙面 hover。
    *
    * hover 是指鼠标或指针悬停命中的交互状态；拖拽时抑制 hover 可以避免误操作。
@@ -84,7 +113,7 @@ describe('架构约束检查', () => {
       bottom: viewport.height * 0.22,
     }
 
-    const count = countLinesInRegion(grid.visibleRange(), topRightRegion, grid)
+    const count = countLinesInRegion(grid.visibleWorldGridRange(), topRightRegion, grid)
 
     expect(count).toBeGreaterThanOrEqual(6)
 
@@ -211,9 +240,9 @@ function segmentIntersectsRect(
 }
 
 /**
- * 统计可见网格范围内有多少条横线或竖线穿过指定屏幕区域。
+ * 统计可见世界网格线范围内有多少条横线或竖线穿过指定屏幕区域。
  *
- * @param range 当前透视网格计算出的可见单元格范围。
+ * @param range 当前透视网格计算出的可见世界网格线索引范围。
  * @param rect 需要统计覆盖情况的屏幕矩形区域。
  * @param grid 透视网格实例，用来把世界坐标转换为屏幕坐标。
  * @returns 穿过指定矩形区域的网格线数量。

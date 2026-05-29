@@ -1,11 +1,12 @@
 import { CONTENT_LIMIT } from './constants'
 import { coordKey } from './geometry'
-import type { Cell, CellBlock, CellTone, Coord } from './types'
+import type { Cell, Coord } from './types'
 
-/** 表示一次写入单元格操作的结果。 */
-export type CellAuthoringResult =
-  | { status: 'created'; cell: Cell }
+/** 表示一次格子写入前置检查的结果。 */
+export type CellAuthoringCheckResult =
+  | { status: 'ready' }
   | { status: 'empty-draft' }
+  | { status: 'too-long' }
   | { status: 'occupied' }
 
 /**
@@ -23,72 +24,27 @@ export function getDraftAuthoringState(draft: string) {
 }
 
 /**
- * 尝试把草稿写入指定单元格。
+ * 检查当前草稿是否可以提交给持久化写入流程。
  *
  * @param cells 当前已有内容的单元格列表。
  * @param coord 目标单元格坐标。
  * @param draft 用户输入的草稿文本。
- * @param now 可注入的当前时间函数，方便测试时固定时间。
- * @returns 创建成功、空草稿或目标已占用三种结果之一。
+ * @returns ready 表示可以提交；其他状态表示需要阻止提交。
+ *
+ * 边界条件：这里只做前端体验用的快速检查，最终是否写入成功以服务端持久化结果为准。
  */
-export function authorCell(cells: Cell[], coord: Coord, draft: string, now = () => new Date()): CellAuthoringResult {
-  const content = draft.trim()
-
-  if (!content) {
+export function checkCellAuthoring(cells: Cell[], coord: Coord, draft: string): CellAuthoringCheckResult {
+  if (!draft.trim()) {
     return { status: 'empty-draft' }
+  }
+
+  if (draft.length > CONTENT_LIMIT) {
+    return { status: 'too-long' }
   }
 
   if (cells.some((cell) => coordKey(cell) === coordKey(coord))) {
     return { status: 'occupied' }
   }
 
-  const createdAt = now().toISOString()
-
-  return {
-    status: 'created',
-    cell: {
-      ...coord,
-      id: createCellId(coord, createdAt),
-      blocks: [createTextBlock(content, createdAt)],
-      createdAt,
-      tone: getCellToneForCoord(coord),
-    },
-  }
-}
-
-/**
- * 为新单元格创建稳定 id。
- *
- * @param coord 单元格坐标。
- * @param createdAt 单元格创建时间。
- * @returns 包含坐标和时间的单元格 id。
- */
-function createCellId(coord: Coord, createdAt: string): string {
-  return `cell:${coord.x}:${coord.y}:${createdAt}`
-}
-
-/**
- * 把用户草稿包装成第一版支持的文字内容块。
- *
- * @param content 已经 trim 过的文本内容。
- * @param createdAt 单元格创建时间，用于生成稳定 block id。
- * @returns text 类型内容块。
- */
-function createTextBlock(content: string, createdAt: string): CellBlock {
-  return {
-    id: `block:text:${createdAt}`,
-    type: 'text',
-    content,
-  }
-}
-
-/**
- * 根据坐标稳定地选择一个单元格色调。
- *
- * @param coord 单元格坐标。
- * @returns 与坐标绑定的色调名称。
- */
-export function getCellToneForCoord(coord: Coord): CellTone {
-  const tones: CellTone[] = ['mint', 'amber', 'cyan', 'coral']
-  return tones[Math.abs(coord.x * 7 + coord.y * 13) % tones.length]
+  return { status: 'ready' }
 }

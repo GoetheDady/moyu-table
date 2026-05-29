@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { authorCell } from '../../domain/cells/cellAuthoring'
+import { createCellClient, type CreateClientCellResult } from '../../data/cellClient'
+import { checkCellAuthoring, type CellAuthoringCheckResult } from '../../domain/cells/cellAuthoring'
 import { JUMP_ANIMATION_MS } from '../../domain/cells/constants'
 import {
   cameraForCellCenter,
@@ -17,14 +18,6 @@ import { JumpDock } from './JumpDock'
 const initialViewport = { width: 1280, height: 720 }
 const CELL_FETCH_DEBOUNCE_MS = 220
 
-type CellsResponse = {
-  cells: Cell[]
-}
-
-type CreateCellResponse = {
-  cell: Cell
-}
-
 /**
  * 渲染 moyu-table 的主应用，并维护网格内容、相机、缩放和选中态。
  *
@@ -33,6 +26,7 @@ type CreateCellResponse = {
 function AppWall() {
   const jumpAnimationRef = useRef<number | null>(null)
 
+  const cellClient = useMemo(() => createCellClient(), [])
   const [cells, setCells] = useState<Cell[]>([])
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 32 })
   const [zoom, setZoom] = useState(1)
@@ -43,6 +37,9 @@ function AppWall() {
   const [isJumpOpen, setIsJumpOpen] = useState(false)
   const [jumpX, setJumpX] = useState('0')
   const [jumpY, setJumpY] = useState('0')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [authoringError, setAuthoringError] = useState<string | null>(null)
+  const [isSubmittingCell, setIsSubmittingCell] = useState(false)
 
   const grid = useMemo(() => createPerspectiveGrid({ camera, zoom, viewport }), [camera, zoom, viewport])
 
@@ -73,7 +70,7 @@ function AppWall() {
 
   useEffect(() => {
     const controller = new AbortController()
-    const range = grid.visibleRange()
+    const range = grid.visibleCellRange()
 
     /**
      * 从后端读取当前可见范围内的格子。
@@ -81,23 +78,15 @@ function AppWall() {
      * @returns Promise，无显式返回值；副作用是用接口数据替换当前画布格子。
      */
     const loadVisibleCells = async () => {
-      const params = new URLSearchParams({
-        minX: String(range.startX),
-        maxX: String(range.endX),
-        minY: String(range.startY),
-        maxY: String(range.endY),
-      })
-      try {
-        const response = await fetch(`/api/cells?${params.toString()}`, { signal: controller.signal })
+      const result = await cellClient.listCellsInRange(range, { signal: controller.signal })
 
-        if (!response.ok) return
-
-        const result = (await response.json()) as CellsResponse
+      if (result.status === 'loaded') {
         setCells(result.cells)
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return
+        setLoadError(null)
+      }
 
-        throw error
+      if (result.status === 'request-failed') {
+        setLoadError('附近格子暂时加载失败，移动或缩放时会自动重试。')
       }
     }
 
@@ -109,7 +98,29 @@ function AppWall() {
       controller.abort()
       window.clearTimeout(timeoutId)
     }
-  }, [grid])
+  }, [cellClient, grid])
+
+  /**
+   * 更新用户草稿，并清理上一轮写入失败提示。
+   *
+   * @param nextDraft 下一份草稿文本。
+   * @returns 无返回值，副作用是更新编辑状态。
+   */
+  const handleDraftChange = (nextDraft: string) => {
+    setDraft(nextDraft)
+    setAuthoringError(null)
+  }
+
+  /**
+   * 更新当前选中态，并清理与旧选中格子相关的错误提示。
+   *
+   * @param nextSelection 下一份选中态，null 表示没有选中任何格子。
+   * @returns 无返回值，副作用是更新选择状态。
+   */
+  const handleSelectionChange = (nextSelection: Selection | null) => {
+    setSelection(nextSelection)
+    setAuthoringError(null)
+  }
 
   /**
    * 平滑移动相机到目标位置。
@@ -158,6 +169,7 @@ function AppWall() {
 
     setSelection(null)
     setDraft('')
+    setAuthoringError(null)
     setHoveredCoord({ x, y })
     animateCameraTo(cameraForCellCenter({ x, y }))
   }
@@ -168,25 +180,32 @@ function AppWall() {
    * @returns 无返回值，副作用是可能新增单元格、切换到阅读态并清空草稿。
    */
   const handleSubmit = async () => {
-    if (!selection || selection.mode !== 'edit') return
+    if (!selection || selection.mode !== 'edit' || isSubmittingCell) return
 
-    const result = authorCell(cells, selection.coord, draft)
-    if (result.status !== 'created') return
+    const checkResult = checkCellAuthoring(cells, selection.coord, draft)
+    if (checkResult.status !== 'ready') {
+      setAuthoringError(getAuthoringFailureMessage(checkResult.status))
+      return
+    }
 
-    const response = await fetch('/api/cells', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        x: selection.coord.x,
-        y: selection.coord.y,
-        type: 'THOUGHT',
-        content: draft,
-      }),
+    setIsSubmittingCell(true)
+    setAuthoringError(null)
+
+    const createResult = await cellClient.createCell({
+      x: selection.coord.x,
+      y: selection.coord.y,
+      type: 'THOUGHT',
+      content: draft,
     })
 
-    if (!response.ok) return
+    setIsSubmittingCell(false)
 
-    const created = ((await response.json()) as CreateCellResponse).cell
+    if (createResult.status !== 'created') {
+      setAuthoringError(getCreateCellFailureMessage(createResult))
+      return
+    }
+
+    const created = createResult.cell
 
     setCells((currentCells) => {
       if (currentCells.some((cell) => cell.x === created.x && cell.y === created.y)) {
@@ -203,7 +222,7 @@ function AppWall() {
     ? getPanelStyle(
         grid.cellRect(selection.coord),
         selection.mode === 'edit' ? 326 : 292,
-        selection.mode === 'edit' ? 220 : 184,
+        selection.mode === 'edit' ? 248 : 184,
       )
     : undefined
 
@@ -219,9 +238,9 @@ function AppWall() {
         selection={selection}
         onCancelJumpAnimation={cancelJumpAnimation}
         onCameraChange={setCamera}
-        onDraftChange={setDraft}
+        onDraftChange={handleDraftChange}
         onHoveredCoordChange={setHoveredCoord}
-        onSelectionChange={setSelection}
+        onSelectionChange={handleSelectionChange}
         onZoomChange={setZoom}
       />
 
@@ -235,15 +254,27 @@ function AppWall() {
         onSubmit={handleJumpSubmit}
       />
 
+      {loadError ? (
+        <div
+          role="status"
+          className="absolute top-[18px] right-[18px] z-30 max-w-[min(360px,calc(100vw-36px))] rounded-lg border border-[#f0ca7355] bg-[#2b2113cc] px-3.5 py-2.5 text-[13px] font-semibold leading-[1.45] text-[#ffe2a3] shadow-moyu-dock backdrop-blur-2xl"
+        >
+          {loadError}
+        </div>
+      ) : null}
+
       <FloatingPanels
+        authoringError={authoringError}
         draft={draft}
+        isSubmitting={isSubmittingCell}
         panelStyle={panelStyle}
         selection={selection}
         onCancelEdit={() => {
           setSelection(null)
           setDraft('')
+          setAuthoringError(null)
         }}
-        onDraftChange={setDraft}
+        onDraftChange={handleDraftChange}
         onSubmit={handleSubmit}
       />
     </main>
@@ -281,3 +312,39 @@ function getPanelStyle(rect: CellRect, width: number, height: number) {
 }
 
 export default AppWall
+
+/**
+ * 将前端写入前置检查结果转换为用户可读提示。
+ *
+ * @param status 前置检查失败状态。
+ * @returns 可以显示在编辑面板里的错误提示。
+ */
+function getAuthoringFailureMessage(status: Exclude<CellAuthoringCheckResult['status'], 'ready'>): string {
+  if (status === 'empty-draft') {
+    return '先写点内容再锁定这个格子。'
+  }
+
+  if (status === 'too-long') {
+    return '内容超过字数上限，删短一点再试。'
+  }
+
+  return '这个格子已经有内容了，换一个空格子试试。'
+}
+
+/**
+ * 将后端写入结果转换为用户可读提示。
+ *
+ * @param result 创建格子失败结果。
+ * @returns 可以显示在编辑面板里的错误提示。
+ */
+function getCreateCellFailureMessage(result: Exclude<CreateClientCellResult, { status: 'created' }>): string {
+  if (result.status === 'invalid-content') {
+    return '内容为空或超过上限，调整后再写入。'
+  }
+
+  if (result.status === 'occupied') {
+    return '这个格子刚刚被占用了，换一个空格子试试。'
+  }
+
+  return '写入失败，请稍后再试。'
+}
