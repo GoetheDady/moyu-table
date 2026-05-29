@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-moyu-bg: #06080b;
+  --color-moyu-text: #e6fff2;
+  --color-moyu-panel: rgba(17, 21, 25, 0.94);
+  --color-moyu-panel-top: rgba(25, 30, 35, 0.94);
+  --color-moyu-panel-bottom: rgba(15, 18, 22, 0.94);
+  --color-moyu-panel-soft: rgba(9, 12, 15, 0.84);
+  --color-moyu-panel-soft-top: rgba(20, 26, 30, 0.84);
+  --color-moyu-panel-soft-bottom: rgba(9, 12, 15, 0.84);
+  --color-moyu-border: rgba(173, 191, 205, 0.28);
+  --color-moyu-border-soft: rgba(173, 191, 205, 0.24);
+  --color-moyu-input-border: rgba(197, 212, 222, 0.28);
+  --color-moyu-muted: rgba(211, 224, 231, 0.68);
+  --color-moyu-field: rgba(6, 8, 11, 0.48);
+  --color-moyu-field-strong: rgba(6, 8, 11, 0.56);
+  --color-moyu-focus: rgba(130, 255, 193, 0.62);
+  --color-moyu-primary-top: #8cf0bd;
+  --color-moyu-primary-bottom: #6adba5;
+  --color-moyu-primary-hover-top: #99f7c7;
+  --color-moyu-primary-hover-bottom: #70e2ab;
+  --color-moyu-primary-text: #073629;
+  --shadow-moyu-panel: 0 26px 70px rgba(0, 0, 0, 0.44), 0 0 30px rgba(118, 255, 190, 0.08);
+  --shadow-moyu-dock: 0 18px 52px rgba(0, 0, 0, 0.34), 0 0 24px rgba(118, 255, 190, 0.06);
+  --shadow-moyu-primary: 0 12px 28px rgba(104, 231, 169, 0.2);
+}
+
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e6fff2;
+  background: #06080b;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
