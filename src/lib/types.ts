@@ -16,12 +16,47 @@ export type Coord = {
 export type CellTone = 'mint' | 'amber' | 'cyan' | 'coral'
 
 /**
+ * 表示单元格内容块的类型。
+ *
+ * 第一版只创建 text 类型，但类型集合为后续问题、图片、艺术字和画图预留。
+ */
+export type CellBlockType = 'text' | 'question' | 'image' | 'artText' | 'drawing'
+
+/**
+ * 表示单元格里的一个内容块。
+ *
+ * title 用于封面标题和未来搜索；content 用于保存文字正文或内容说明。
+ */
+export type CellBlock = {
+  id: string
+  type: CellBlockType
+  title?: string
+  content?: string
+}
+
+/**
+ * 表示未点开单元格时使用的封面预览。
+ *
+ * 第一版以前端 template 动态生成；imageUrl 为未来图片、画图快照或后端封面预留。
+ */
+export type CellPreview = {
+  source: 'template' | 'image' | 'drawingSnapshot' | 'aiGenerated'
+  template: CellBlockType
+  title: string
+  subtitle?: string
+  label: string
+  imageUrl?: string
+}
+
+/**
  * 表示已经写入内容的网格单元格。
  *
  * createdAt 使用 ISO 时间字符串，方便序列化和后续跨时区展示。
  */
 export type Cell = Coord & {
-  content: string
+  id: string
+  blocks: CellBlock[]
+  previewOverride?: CellPreview
   createdAt: string
   tone: CellTone
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { initialCells } from '../src/data/demoCells.js'
+import { getCellPreview } from '../src/lib/cellPreview.js'
 import { CELL_SIZE } from '../src/lib/constants.js'
 import {
   cameraForCellCenter,
@@ -135,6 +136,46 @@ describe('架构约束检查', () => {
     expect(Math.abs(projectedTextBox.yAxis.x)).toBeLessThanOrEqual(Math.abs(projectedTextBox.yAxis.y))
     expect(projectedTextBox.width).toBeGreaterThan(0)
     expect(projectedTextBox.height).toBeGreaterThan(0)
+  })
+
+  /**
+   * 验证单元格封面会从内容块自动提取标题和类型标签。
+   *
+   * 封面预览是格子未点开时的主要信息来源，必须在没有图片时也能稳定生成。
+   */
+  test('从文字内容块自动生成封面预览', () => {
+    const preview = getCellPreview(initialCells[0])
+
+    expect(preview).toMatchObject({
+      source: 'template',
+      template: 'text',
+      title: '保持热爱',
+      subtitle: '奔赴山海',
+      label: '文字',
+    })
+  })
+
+  /**
+   * 验证手动封面配置会优先于自动封面生成。
+   *
+   * previewOverride 是未来用户自定义封面的扩展点，不能被自动推导覆盖。
+   */
+  test('优先使用手动封面配置', () => {
+    const preview = getCellPreview({
+      ...initialCells[0],
+      previewOverride: {
+        source: 'template',
+        template: 'question',
+        title: '自定义封面',
+        label: '问题',
+      },
+    })
+
+    expect(preview).toMatchObject({
+      template: 'question',
+      title: '自定义封面',
+      label: '问题',
+    })
   })
 })
 

@@ -1,4 +1,5 @@
 import { getDraftAuthoringState } from '../lib/cellAuthoring.js'
+import { getBlockContent, getCellPreview, getPrimaryBlock } from '../lib/cellPreview.js'
 import { formatCreatedAt } from '../lib/text.js'
 import type { Selection } from '../lib/types.js'
 
@@ -69,11 +70,21 @@ export function FloatingPanels({
   }
 
   if (selection?.mode === 'read') {
+    const primaryBlock = getPrimaryBlock(selection.cell)
+    const preview = getCellPreview(selection.cell)
+    const detailBody = getDetailBody(getBlockContent(primaryBlock), preview.title)
+
     return (
       <section className={`${panelClass} p-[18px]`} style={panelStyle}>
-        <p className="mb-4 whitespace-pre-wrap break-anywhere text-base font-semibold leading-[1.55] text-[#e8fff2]">
-          {selection.cell.content}
-        </p>
+        <div className="mb-3 inline-flex rounded-full border border-moyu-border-soft px-2.5 py-1 text-xs font-semibold leading-none text-moyu-muted">
+          {preview.label}
+        </div>
+        <h2 className="mb-2 text-base font-bold leading-[1.35] text-[#e8fff2]">{preview.title}</h2>
+        {detailBody ? (
+          <p className="mb-4 whitespace-pre-wrap break-anywhere text-base font-semibold leading-[1.55] text-[#e8fff2]">
+            {detailBody}
+          </p>
+        ) : null}
         <div className="text-[13px] leading-[1.6] text-moyu-muted">坐标 x: {selection.coord.x}, y: {selection.coord.y}</div>
         <div className="text-[13px] leading-[1.6] text-moyu-muted">
           写入时间 {formatCreatedAt(selection.cell.createdAt)}
@@ -83,4 +94,24 @@ export function FloatingPanels({
   }
 
   return null
+}
+
+/**
+ * 从完整正文中去掉已经作为标题展示的第一行。
+ *
+ * @param content 内容块完整正文。
+ * @param title 当前详情标题。
+ * @returns 标题之外的正文；如果正文只有标题，则返回空字符串。
+ */
+function getDetailBody(content: string, title: string): string {
+  const lines = content
+    .split(/\s*\n\s*/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines[0] === title) {
+    return lines.slice(1).join('\n')
+  }
+
+  return content
 }

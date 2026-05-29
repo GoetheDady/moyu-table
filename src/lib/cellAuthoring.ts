@@ -1,6 +1,6 @@
 import { CONTENT_LIMIT } from './constants.js'
 import { coordKey } from './geometry.js'
-import type { Cell, CellTone, Coord } from './types.js'
+import type { Cell, CellBlock, CellTone, Coord } from './types.js'
 
 /** 表示一次写入单元格操作的结果。 */
 export type CellAuthoringResult =
@@ -42,14 +42,43 @@ export function authorCell(cells: Cell[], coord: Coord, draft: string, now = () 
     return { status: 'occupied' }
   }
 
+  const createdAt = now().toISOString()
+
   return {
     status: 'created',
     cell: {
       ...coord,
-      content,
-      createdAt: now().toISOString(),
+      id: createCellId(coord, createdAt),
+      blocks: [createTextBlock(content, createdAt)],
+      createdAt,
       tone: pickTone(coord),
     },
+  }
+}
+
+/**
+ * 为新单元格创建稳定 id。
+ *
+ * @param coord 单元格坐标。
+ * @param createdAt 单元格创建时间。
+ * @returns 包含坐标和时间的单元格 id。
+ */
+function createCellId(coord: Coord, createdAt: string): string {
+  return `cell:${coord.x}:${coord.y}:${createdAt}`
+}
+
+/**
+ * 把用户草稿包装成第一版支持的文字内容块。
+ *
+ * @param content 已经 trim 过的文本内容。
+ * @param createdAt 单元格创建时间，用于生成稳定 block id。
+ * @returns text 类型内容块。
+ */
+function createTextBlock(content: string, createdAt: string): CellBlock {
+  return {
+    id: `block:text:${createdAt}`,
+    type: 'text',
+    content,
   }
 }
 

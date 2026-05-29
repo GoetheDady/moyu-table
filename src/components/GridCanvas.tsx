@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { sparkles } from '../data/demoCells.js'
+import { getCellPreview } from '../lib/cellPreview.js'
 import { CELL_SIZE } from '../lib/constants.js'
 import { toneMap } from '../lib/cellStyle.js'
+import type { CellToneStyle } from '../lib/cellStyle.js'
 import { clamp, drawCellPath } from '../lib/geometry.js'
 import type { PerspectiveGrid } from '../lib/geometry.js'
-import { drawProjectedWrappedText, getProjectedTextBox, truncateForCell } from '../lib/text.js'
+import { drawWrappedText, getProjectedTextBox } from '../lib/text.js'
 import {
   beginWallPointer,
   hoverWallAtPoint,
@@ -167,10 +169,10 @@ export function GridCanvas({
     }
 
     /**
-     * 绘制一个已有内容的单元格。
+     * 绘制一个已有内容的单元格封面。
      *
      * @param cell 需要绘制的单元格数据。
-     * @returns 无返回值，副作用是在 Canvas 上绘制单元格底色、描边和文字。
+     * @returns 无返回值，副作用是在 Canvas 上绘制封面卡片、标题和类型标签。
      */
     const drawOccupiedCell = (cell: Cell) => {
       const rect = grid.cellRect(cell)
@@ -179,15 +181,14 @@ export function GridCanvas({
       const tone = toneMap[cell.tone]
       const textBox = getProjectedTextBox(rect.points)
       const inset = Math.max(1, 1.4 * grid.zoom)
-      const fontSize = clamp(textBox.height * 0.22, 8, 28)
-      const lineHeight = fontSize * 1.42
       const paddingX = clamp(textBox.width * 0.11, 5, 24)
       const paddingY = clamp(textBox.height * 0.16, 4, 22)
+      const preview = getCellPreview(cell)
 
       context.save()
       context.shadowColor = tone.glow
-      context.shadowBlur = 22 * grid.zoom
-      context.fillStyle = tone.fill
+      context.shadowBlur = 28 * grid.zoom
+      context.fillStyle = createCoverGradient(context, textBox, tone)
       context.strokeStyle = tone.stroke
       context.lineWidth = 1
       drawCellPath(context, rect.points, inset)
@@ -196,18 +197,7 @@ export function GridCanvas({
       context.restore()
 
       context.save()
-      context.fillStyle = tone.text
-      context.font = `650 ${fontSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
-      context.textBaseline = 'top'
-      drawProjectedWrappedText(
-        context,
-        truncateForCell(cell.content),
-        textBox,
-        paddingX,
-        paddingY,
-        lineHeight,
-        3,
-      )
+      drawProjectedCover(context, preview.title, preview.subtitle, preview.label, textBox, paddingX, paddingY, tone)
       context.restore()
     }
 
@@ -343,4 +333,78 @@ export function GridCanvas({
       onPointerUp={handlePointerUp}
     />
   )
+}
+
+/**
+ * 为投影后的封面卡片创建线性渐变。
+ *
+ * @param context Canvas 2D 绘图上下文。
+ * @param box 投影文字盒子，用来确定渐变范围。
+ * @param tone 当前单元格色调样式。
+ * @returns 可作为 fillStyle 使用的 Canvas 渐变对象。
+ */
+function createCoverGradient(
+  context: CanvasRenderingContext2D,
+  box: ReturnType<typeof getProjectedTextBox>,
+  tone: CellToneStyle,
+): CanvasGradient {
+  const gradient = context.createLinearGradient(box.origin.x, box.origin.y, box.origin.x, box.origin.y + box.height)
+  gradient.addColorStop(0, tone.coverTop)
+  gradient.addColorStop(1, tone.coverBottom)
+
+  return gradient
+}
+
+/**
+ * 在投影单元格中绘制小红书式封面内容。
+ *
+ * @param context Canvas 2D 绘图上下文。
+ * @param title 封面主标题。
+ * @param subtitle 封面副标题，可为空。
+ * @param label 内容类型标签。
+ * @param box 投影文字盒子，定义局部绘制坐标系。
+ * @param paddingX 水平方向内边距。
+ * @param paddingY 垂直方向内边距。
+ * @param tone 当前单元格色调样式。
+ * @returns 无返回值，副作用是在 Canvas 上绘制标题、副标题、标签和装饰线。
+ */
+function drawProjectedCover(
+  context: CanvasRenderingContext2D,
+  title: string,
+  subtitle: string | undefined,
+  label: string,
+  box: ReturnType<typeof getProjectedTextBox>,
+  paddingX: number,
+  paddingY: number,
+  tone: CellToneStyle,
+): void {
+  const titleSize = clamp(box.height * 0.2, 9, 24)
+  const subtitleSize = clamp(box.height * 0.105, 7, 13)
+  const labelSize = clamp(box.height * 0.09, 6, 11)
+  const contentWidth = Math.max(1, box.width - paddingX * 2)
+
+  context.save()
+  context.transform(box.xAxis.x, box.xAxis.y, box.yAxis.x, box.yAxis.y, box.origin.x, box.origin.y)
+
+  context.fillStyle = tone.coverAccent
+  context.fillRect(paddingX, paddingY, Math.max(12, box.width * 0.24), Math.max(2, box.height * 0.025))
+
+  context.fillStyle = tone.coverText
+  context.font = `800 ${titleSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  context.textBaseline = 'top'
+  drawWrappedText(context, title, paddingX, paddingY + box.height * 0.13, contentWidth, titleSize * 1.12, 2)
+
+  if (subtitle) {
+    context.fillStyle = tone.coverMuted
+    context.font = `600 ${subtitleSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+    drawWrappedText(context, subtitle, paddingX, paddingY + box.height * 0.58, contentWidth, subtitleSize * 1.3, 1)
+  }
+
+  context.fillStyle = 'rgba(7, 10, 13, 0.42)'
+  context.fillRect(paddingX, box.height - paddingY - labelSize * 1.8, labelSize * 4.2, labelSize * 1.8)
+  context.fillStyle = tone.coverText
+  context.font = `750 ${labelSize}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  context.fillText(label, paddingX + labelSize * 0.72, box.height - paddingY - labelSize * 1.45)
+
+  context.restore()
 }
