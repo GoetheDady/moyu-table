@@ -12,6 +12,7 @@ import type { Camera, CellRect, Coord, Selection } from '../../domain/cells/type
 import { FloatingPanels } from './FloatingPanels'
 import { GridCanvas } from './GridCanvas'
 import { JumpDock } from './JumpDock'
+import { MouseCoordDisplay } from './MouseCoordDisplay'
 import { useVisibleCellLoading } from './visibleCellLoading'
 import { useCameraJump } from './useCameraJump'
 
@@ -172,6 +173,8 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
         onOpenChange={setIsJumpOpen}
         onSubmit={handleJumpSubmit}
       />
+
+      <MouseCoordDisplay coord={hoveredCoord && !loadError && !selection ? hoveredCoord : null} />
 
       {loadError ? (
         <div

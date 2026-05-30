@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PerspectiveGrid } from '../../domain/cells/geometry'
 import type { Camera, Cell, Coord, Selection } from '../../domain/cells/types'
 import {
@@ -16,6 +16,9 @@ import {
   createWallSceneAnimationStore,
   syncWallSceneAnimationStore,
 } from './wallSceneAnimation'
+
+/** 无交互多少毫秒后暂停点点动画以节省电量。 */
+const SPARKLE_IDLE_TIMEOUT = 30_000
 
 /** GridCanvas 组件需要的外部状态和回调。 */
 type GridCanvasProps = {
@@ -50,6 +53,7 @@ export function GridCanvas({
   onZoomChange,
 }: GridCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const contextRef = useRef<CanvasRenderingContext2D | null>(null)
   const animationStoreRef = useRef(createWallSceneAnimationStore())
   const dragRef = useRef<WallPointerSession>({
     pointerId: -1,
@@ -59,14 +63,32 @@ export function GridCanvas({
     isDragging: false,
   })
 
+  // 渲染状态 ref —— 每帧 render 同步写入，rAF 回调读取最新值，避免 effect 重启循环
+  const cellsRef = useRef(cells)
+  const gridRef = useRef(grid)
+  const hoveredCoordRef = useRef(hoveredCoord)
+  const selectionRef = useRef(selection)
+  cellsRef.current = cells
+  gridRef.current = grid
+  hoveredCoordRef.current = hoveredCoord
+  selectionRef.current = selection
+
+  const lastInteractionRef = useRef(performance.now())
+  const loopIdRef = useRef<number | null>(null)
+  const [loopGeneration, setLoopGeneration] = useState(0)
+
   useEffect(() => {
     syncWallSceneAnimationStore(animationStoreRef.current, cells, performance.now())
   }, [cells])
 
   /**
-   * 根据当前墙面场景状态重绘 Canvas。
+   * 维护一个持久的 requestAnimationFrame 渲染循环。
    *
-   * @returns 清理函数，副作用是调整 Canvas 尺寸、绘制当前帧并取消未完成的动画帧。
+   * 循环只创建一次，每帧从 ref 读取最新的渲染状态，React 状态更新不会
+   * 中断循环。循环在无动画需要时自动停止，在交互恢复后通过 loopGeneration
+   * 重新唤醒。
+   *
+   * @returns 清理函数，副作用是取消未完成的动画帧。
    */
   useEffect(() => {
     const canvas = canvasRef.current
@@ -74,40 +96,65 @@ export function GridCanvas({
 
     const context = canvas.getContext('2d')
     if (!context) return
-
-    resizeCanvasForWallScene(canvas, context, grid, window.devicePixelRatio || 1)
+    contextRef.current = context
 
     /**
-     * 绘制一帧墙面场景，并在仍有入场动画时继续请求下一帧。
+     * 绘制一帧墙面场景，并在仍有动画时继续请求下一帧。
      *
-     * @param now 当前帧时间戳。
+     * @param now 当前帧时间戳（来自 requestAnimationFrame 回调）。
      * @returns 无返回值，副作用是在 Canvas 上绘制当前画面。
      */
     const drawFrame = (now: number) => {
-      const hasActiveIntroAnimation = drawWallScene({
+      const currentGrid = gridRef.current
+      const dpr = window.devicePixelRatio || 1
+
+      resizeCanvasForWallScene(canvas, context, currentGrid, dpr)
+
+      const idleDuration = now - lastInteractionRef.current
+      const sparkleActive = idleDuration < SPARKLE_IDLE_TIMEOUT
+
+      const hasActiveAnimation = drawWallScene({
         context,
-        cells,
-        grid,
-        hoveredCoord,
-        selection,
+        cells: cellsRef.current,
+        grid: currentGrid,
+        hoveredCoord: hoveredCoordRef.current,
+        selection: selectionRef.current,
         animationStore: animationStoreRef.current,
         now,
+        sparkleActive,
       })
 
-      if (hasActiveIntroAnimation) {
-        animationFrameId = requestAnimationFrame(drawFrame)
+      if (hasActiveAnimation) {
+        loopIdRef.current = requestAnimationFrame(drawFrame)
+      } else {
+        loopIdRef.current = null
       }
     }
 
-    let animationFrameId: number | null = null
-    drawFrame(performance.now())
+    loopIdRef.current = requestAnimationFrame(drawFrame)
 
     return () => {
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId)
+      if (loopIdRef.current !== null) {
+        cancelAnimationFrame(loopIdRef.current)
+        loopIdRef.current = null
       }
     }
-  }, [cells, grid, hoveredCoord, selection])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 循环只创建一次，渲染状态通过 ref 读取
+  }, [loopGeneration])
+
+  /**
+   * 唤醒渲染循环——在交互恢复时调用。
+   *
+   * 重置空闲计时器。仅当循环已停止时才递增 loopGeneration 触发 effect 重启；
+   * 循环活跃时不触发任何 React 状态更新，避免打断 rAF 节奏。
+   */
+  const wakeLoop = useCallback(() => {
+    lastInteractionRef.current = performance.now()
+
+    if (loopIdRef.current === null) {
+      setLoopGeneration((generation) => generation + 1)
+    }
+  }, [])
 
   /**
    * 绑定滚轮缩放事件，并以鼠标位置为锚点更新相机。
@@ -128,7 +175,9 @@ export function GridCanvas({
       event.preventDefault()
       onCancelJumpAnimation()
 
-      const nextView = zoomWallAtPoint(event.deltaY, { x: event.clientX, y: event.clientY }, grid)
+      wakeLoop()
+
+      const nextView = zoomWallAtPoint(event.deltaY, { x: event.clientX, y: event.clientY }, gridRef.current)
 
       onZoomChange(nextView.zoom)
       onCameraChange(nextView.camera)
@@ -137,7 +186,7 @@ export function GridCanvas({
     canvas.addEventListener('wheel', handleWheel, { passive: false })
 
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [grid, onCameraChange, onCancelJumpAnimation, onZoomChange])
+  }, [gridRef, onCameraChange, onCancelJumpAnimation, onZoomChange, wakeLoop])
 
   /**
    * 处理指针按下，开始拖拽墙面或准备点击选中。
@@ -148,8 +197,10 @@ export function GridCanvas({
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     onCancelJumpAnimation()
 
+    wakeLoop()
+
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = beginWallPointer(event.pointerId, { x: event.clientX, y: event.clientY }, grid)
+    dragRef.current = beginWallPointer(event.pointerId, { x: event.clientX, y: event.clientY }, gridRef.current)
     onHoveredCoordChange(null)
   }
 
@@ -160,6 +211,8 @@ export function GridCanvas({
    * @returns 无返回值，副作用是更新相机、hover 坐标和选中状态。
    */
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    wakeLoop()
+
     const point = { x: event.clientX, y: event.clientY }
     const isActivePointer = dragRef.current.pointerId === event.pointerId
     const session = isActivePointer
@@ -168,7 +221,7 @@ export function GridCanvas({
           ...dragRef.current,
           isDragging: false,
         }
-    const move = moveWallPointer(session, point, grid, Boolean(selection))
+    const move = moveWallPointer(session, point, gridRef.current, Boolean(selectionRef.current))
 
     onHoveredCoordChange(move.hoveredCoord)
 
@@ -195,7 +248,7 @@ export function GridCanvas({
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (dragRef.current.pointerId !== event.pointerId) return
 
-    const release = releaseWallPointer(dragRef.current, { x: event.clientX, y: event.clientY }, grid, cells)
+    const release = releaseWallPointer(dragRef.current, { x: event.clientX, y: event.clientY }, gridRef.current, cellsRef.current)
     dragRef.current = release.session
 
     if (release.didDrag) return

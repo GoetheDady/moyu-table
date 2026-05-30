@@ -16,6 +16,7 @@ export type WallSceneFrame = {
   selection: Selection | null
   animationStore: WallSceneAnimationStore
   now: number
+  sparkleActive: boolean
 }
 
 /**
@@ -46,7 +47,7 @@ export function drawWallScene(frame: WallSceneFrame): boolean {
   context.clearRect(0, 0, grid.viewport.width, grid.viewport.height)
   drawBackground(context, grid)
   drawGrid(context, grid)
-  drawSparkles(context, grid)
+  drawSparkles(context, grid, now)
 
   let hasActiveIntroAnimation = false
 
@@ -67,5 +68,5 @@ export function drawWallScene(frame: WallSceneFrame): boolean {
     drawFocusedCell(context, grid, selection.coord, 'active')
   }
 
-  return hasActiveIntroAnimation
+  return hasActiveIntroAnimation || frame.sparkleActive
 }
