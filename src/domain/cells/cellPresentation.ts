@@ -1,8 +1,15 @@
-import type { Cell, CellPreview, CellTone, Coord } from './types'
-
-export const cellContentTypes = ['THOUGHT', 'NOTE', 'QUESTION', 'TREE_HOLE'] as const
-
-export type CellContentType = (typeof cellContentTypes)[number]
+import {
+  getCellBlockContent,
+  getCellBlockSubtitle,
+  getCellBlockTitle,
+  getCellBlockTypeLabel,
+  getCellContentTypeLabel,
+  getContentBodyWithoutTitle,
+  getContentSubtitle,
+  getContentTitle,
+  type CellContentType,
+} from './cellContent'
+import type { Cell, CellBlock, CellPreview, CellTone, Coord } from './types'
 
 /**
  * 表示展示层需要消费的持久化格子记录。
@@ -19,11 +26,11 @@ export type CellPresentationRecord = {
   createdAt: Date
 }
 
-const cellTypeLabels: Record<CellContentType, string> = {
-  THOUGHT: '随想',
-  NOTE: '笔记',
-  QUESTION: '提问',
-  TREE_HOLE: '树洞',
+/** 表示阅读面板可直接消费的格子展示数据。 */
+export type CellDetail = {
+  preview: CellPreview
+  primaryBlock: CellBlock | null
+  body: string
 }
 
 /**
@@ -53,13 +60,63 @@ export function toWallCell(cell: CellPresentationRecord): Cell {
 }
 
 /**
- * 从正文中提取封面标题。
+ * 生成格子未点开时展示的封面预览。
  *
- * @param content 格子正文。
- * @returns 正文第一行；没有可用行时返回未命名内容。
+ * @param cell 需要生成封面的格子。
+ * @returns 可供 Canvas、阅读面板或未来卡片渲染的封面预览信息。
  */
-export function getContentTitle(content: string): string {
-  return getContentLines(content)[0] || '未命名内容'
+export function getCellPreview(cell: Cell): CellPreview {
+  if (cell.previewOverride) {
+    return cell.previewOverride
+  }
+
+  const primaryBlock = getPrimaryBlock(cell)
+  const template = primaryBlock?.type ?? 'text'
+
+  return {
+    source: 'template',
+    template,
+    title: getCellBlockTitle(primaryBlock),
+    subtitle: getCellBlockSubtitle(primaryBlock),
+    label: getCellBlockTypeLabel(template),
+  }
+}
+
+/**
+ * 获取格子的主内容块。
+ *
+ * @param cell 需要读取的格子。
+ * @returns blocks 中的第一个内容块；如果没有内容块则返回 null。
+ */
+export function getPrimaryBlock(cell: Cell): CellBlock | null {
+  return cell.blocks[0] ?? null
+}
+
+/**
+ * 读取内容块的正文文本。
+ *
+ * @param block 需要读取的内容块，可以为空。
+ * @returns 内容块正文；没有正文时返回空字符串。
+ */
+export function getBlockContent(block: CellBlock | null | undefined): string {
+  return getCellBlockContent(block)
+}
+
+/**
+ * 生成阅读面板需要的格子详情展示数据。
+ *
+ * @param cell 需要展示的格子。
+ * @returns 包含封面、主内容块和去掉标题后的正文。
+ */
+export function getCellDetail(cell: Cell): CellDetail {
+  const primaryBlock = getPrimaryBlock(cell)
+  const preview = getCellPreview(cell)
+
+  return {
+    preview,
+    primaryBlock,
+    body: getContentBodyWithoutTitle(getBlockContent(primaryBlock), preview.title),
+  }
 }
 
 /**
@@ -85,29 +142,6 @@ function toCellPreview(cell: CellPresentationRecord): CellPreview {
     template: 'text',
     title: cell.title || getContentTitle(cell.content),
     subtitle: getContentSubtitle(cell.content),
-    label: cellTypeLabels[cell.type],
+    label: getCellContentTypeLabel(cell.type),
   }
-}
-
-/**
- * 从正文中提取封面副标题。
- *
- * @param content 格子正文。
- * @returns 正文第二行之后的摘要；没有可用内容时返回 undefined。
- */
-function getContentSubtitle(content: string): string | undefined {
-  return getContentLines(content).slice(1).join(' ') || undefined
-}
-
-/**
- * 将正文拆成已清理空白的非空行。
- *
- * @param content 格子正文。
- * @returns 非空正文行。
- */
-function getContentLines(content: string): string[] {
-  return content
-    .split(/\s*\n\s*/)
-    .map((line) => line.trim())
-    .filter(Boolean)
 }

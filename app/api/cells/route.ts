@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getCellRepository } from '../../../src/data/cellRepository'
-import { cellContentTypes } from '../../../src/domain/cells/cellPresentation'
+import { toCreateCellHttpResponse } from '../../../src/data/cellTransport'
+import { cellContentTypes } from '../../../src/domain/cells/cellContent'
 
 const rangeQuerySchema = z
   .object({
@@ -49,18 +50,13 @@ export async function POST(request: NextRequest) {
   const body = createCellSchema.safeParse(await request.json())
 
   if (!body.success) {
-    return NextResponse.json({ error: '格子内容不合法' }, { status: 400 })
+    const response = toCreateCellHttpResponse({ status: 'invalid-content' })
+
+    return NextResponse.json(response.body, { status: response.status })
   }
 
   const result = await getCellRepository().createCell(body.data)
+  const response = toCreateCellHttpResponse(result)
 
-  if (result.status === 'invalid-content') {
-    return NextResponse.json({ error: '格子内容不合法' }, { status: 400 })
-  }
-
-  if (result.status === 'occupied') {
-    return NextResponse.json({ error: '这个格子已经被占用' }, { status: 409 })
-  }
-
-  return NextResponse.json({ cell: result.cell }, { status: 201 })
+  return NextResponse.json(response.body, { status: response.status })
 }

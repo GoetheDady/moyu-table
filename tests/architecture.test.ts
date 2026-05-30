@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { initialCells } from '../src/data/demoCells'
-import { getCellPreview } from '../src/domain/cells/cellPreview'
+import { getCellPreview } from '../src/domain/cells/cellPresentation'
 import { CELL_SIZE } from '../src/domain/cells/constants'
 import {
   cameraForCellCenter,
@@ -9,7 +9,7 @@ import {
   worldToCellCoord,
 } from '../src/domain/cells/geometry'
 import { getProjectedTextBox } from '../src/domain/cells/text'
-import { beginWallPointer, hoverWallAtPoint } from '../src/features/wall/wallInteraction'
+import { beginWallPointer, moveWallPointer } from '../src/features/wall/wallInteraction'
 
 describe('架构约束检查', () => {
   /**
@@ -119,9 +119,11 @@ describe('架构约束检查', () => {
 
     const cornerPoint = { x: viewport.width * 0.95, y: viewport.height * 0.05 }
     const session = beginWallPointer(1, cornerPoint, grid)
-    const dragHover = hoverWallAtPoint({ x: cornerPoint.x - 12, y: cornerPoint.y + 8 }, grid, session.isDragging)
+    const dragMove = moveWallPointer(session, { x: cornerPoint.x - 12, y: cornerPoint.y + 8 }, grid, false)
+    const idleMove = moveWallPointer({ ...session, isDragging: false }, cornerPoint, grid, false)
 
-    expect(dragHover).toBeNull()
+    expect(dragMove.hoveredCoord).toBeNull()
+    expect(idleMove.hoveredCoord).toEqual(grid.screenToCell(cornerPoint))
   })
 
   /**

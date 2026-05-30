@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { cellContentTypes, getContentTitle, toWallCell } from '../src/domain/cells/cellPresentation'
+import { getCellDetail, toWallCell } from '../src/domain/cells/cellPresentation'
 
 describe('Cell presentation', () => {
   /**
@@ -68,21 +68,28 @@ describe('Cell presentation', () => {
   })
 
   /**
-   * 验证内容类型集合与当前第一版持久化类型保持一致。
+   * 验证阅读面板详情会复用统一的格子展示语言。
    *
-   * @returns 无返回值，断言允许的内容类型不会因为展示映射移动而丢失。
+   * 展示语言指标题、副标题、标签和正文拆分这些界面含义，不应该分散在多个调用方里。
    */
-  test('保留第一版持久化内容类型集合', () => {
-    expect(cellContentTypes).toEqual(['THOUGHT', 'NOTE', 'QUESTION', 'TREE_HOLE'])
-  })
+  test('生成阅读面板详情数据', () => {
+    const cell = toWallCell({
+      id: 'cell-detail',
+      x: 0,
+      y: 0,
+      type: 'QUESTION',
+      title: null,
+      content: '  今天吃什么  \n  想吃面  ',
+      createdAt: new Date('2026-05-29T12:00:00.000Z'),
+    })
 
-  /**
-   * 验证标题提取会忽略空白行。
-   *
-   * @returns 无返回值，断言标题来自第一个非空正文行。
-   */
-  test('从第一个非空正文行提取标题', () => {
-    expect(getContentTitle(' \n  先写一句 \n 第二句')).toBe('先写一句')
-    expect(getContentTitle('  \n  ')).toBe('未命名内容')
+    expect(getCellDetail(cell)).toMatchObject({
+      preview: {
+        title: '今天吃什么',
+        subtitle: '想吃面',
+        label: '提问',
+      },
+      body: '想吃面',
+    })
   })
 })

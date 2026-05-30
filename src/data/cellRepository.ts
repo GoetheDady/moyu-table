@@ -1,11 +1,7 @@
 import { Prisma } from '@prisma/client'
-import { CONTENT_LIMIT } from '../domain/cells/constants'
-import {
-  getContentTitle,
-  toWallCell,
-  type CellContentType,
-  type CellPresentationRecord,
-} from '../domain/cells/cellPresentation'
+import { toWallCell, type CellPresentationRecord } from '../domain/cells/cellPresentation'
+import type { CellContentType } from '../domain/cells/cellContent'
+import { prepareCellWrite, type CellWriteInput, type PreparedCellWrite } from '../domain/cells/cellWriting'
 import type { CellRange } from '../domain/cells/geometry'
 import type { Cell } from '../domain/cells/types'
 import { getPrismaClient } from '../lib/prisma'
@@ -19,12 +15,7 @@ export const CELL_READ_LIMIT = 500
 export type PersistedCellRecord = CellPresentationRecord
 
 /** 表示新建格子时需要的领域输入。 */
-export type CreatePersistedCellInput = {
-  x: number
-  y: number
-  type?: PersistedCellType
-  content: string
-}
+export type CreatePersistedCellInput = CellWriteInput
 
 /** 表示创建格子的结果，调用方不需要知道底层 Prisma 错误码。 */
 export type CreatePersistedCellResult =
@@ -32,31 +23,15 @@ export type CreatePersistedCellResult =
   | { status: 'invalid-content' }
   | { status: 'occupied' }
 
+/** 表示持久化适配器插入格子后的领域结果。 */
+export type InsertPersistedCellResult =
+  | { status: 'inserted'; cell: PersistedCellRecord }
+  | { status: 'occupied' }
+
 /** 表示格子持久化适配器需要实现的最小读写能力。 */
 export type CellPersistenceStore = {
-  findMany: (args: CellFindManyArgs) => Promise<PersistedCellRecord[]>
-  create: (args: CellCreateArgs) => Promise<PersistedCellRecord>
-}
-
-/** 表示按坐标范围读取格子时传给持久化适配器的查询参数。 */
-export type CellFindManyArgs = {
-  where: {
-    x: { gte: number; lte: number }
-    y: { gte: number; lte: number }
-  }
-  orderBy: { createdAt: 'desc' }
-  take: number
-}
-
-/** 表示创建格子时传给持久化适配器的写入参数。 */
-export type CellCreateArgs = {
-  data: {
-    x: number
-    y: number
-    type: PersistedCellType
-    title: string
-    content: string
-  }
+  listCellsInRange: (range: CellRange, limit: number) => Promise<PersistedCellRecord[]>
+  insertCell: (cell: PreparedCellWrite) => Promise<InsertPersistedCellResult>
 }
 
 /**
@@ -67,12 +42,43 @@ export type CellCreateArgs = {
  * 副作用：会通过 Prisma Client 访问 PostgreSQL。
  */
 export function getCellRepository() {
+  return createCellRepository(createPrismaCellPersistenceStore())
+}
+
+/**
+ * 创建 Prisma 格子持久化适配器。
+ *
+ * @returns 满足 CellPersistenceStore Interface 的 Prisma 适配器。
+ *
+ * 副作用：读取或写入时会访问 PostgreSQL；唯一约束冲突会在这里转成 occupied。
+ */
+export function createPrismaCellPersistenceStore(): CellPersistenceStore {
   const prisma = getPrismaClient()
 
-  return createCellRepository({
-    findMany: (args) => prisma.cell.findMany(args),
-    create: (args) => prisma.cell.create(args),
-  })
+  return {
+    listCellsInRange: (range, limit) =>
+      prisma.cell.findMany({
+        where: {
+          x: { gte: range.minX, lte: range.maxX },
+          y: { gte: range.minY, lte: range.maxY },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    insertCell: async (cell) => {
+      try {
+        const created = await prisma.cell.create({ data: cell })
+
+        return { status: 'inserted', cell: created }
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          return { status: 'occupied' }
+        }
+
+        throw error
+      }
+    },
+  }
 }
 
 /**
@@ -90,14 +96,7 @@ export function createCellRepository(store: CellPersistenceStore) {
      * @returns 已转换为前端格子模型的结果列表，按创建时间倒序返回，最多 CELL_READ_LIMIT 条。
      */
     async listCellsInRange(range: CellRange): Promise<Cell[]> {
-      const cells = await store.findMany({
-        where: {
-          x: { gte: range.minX, lte: range.maxX },
-          y: { gte: range.minY, lte: range.maxY },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: CELL_READ_LIMIT,
-      })
+      const cells = await store.listCellsInRange(range, CELL_READ_LIMIT)
 
       return cells.map(toWallCell)
     },
@@ -111,49 +110,25 @@ export function createCellRepository(store: CellPersistenceStore) {
      * 副作用：成功时会写入 PostgreSQL；坐标唯一约束冲突会被转换为 occupied 状态。
      */
     async createCell(input: CreatePersistedCellInput): Promise<CreatePersistedCellResult> {
-      const content = normalizeContent(input.content)
+      const prepared = prepareCellWrite(input)
 
-      if (!content) {
+      if (prepared.status === 'empty-content' || prepared.status === 'too-long') {
         return { status: 'invalid-content' }
       }
 
-      try {
-        const cell = await store.create({
-          data: {
-            x: input.x,
-            y: input.y,
-            type: input.type ?? 'THOUGHT',
-            title: getContentTitle(content),
-            content,
-          },
-        })
-
-        return { status: 'created', cell: toWallCell(cell) }
-      } catch (error) {
-        if (isUniqueConstraintError(error)) {
-          return { status: 'occupied' }
-        }
-
-        throw error
+      if (prepared.status === 'occupied') {
+        return { status: 'occupied' }
       }
+
+      const inserted = await store.insertCell(prepared.write)
+
+      if (inserted.status === 'occupied') {
+        return { status: 'occupied' }
+      }
+
+      return { status: 'created', cell: toWallCell(inserted.cell) }
     },
   }
-}
-
-/**
- * 整理并校验格子正文。
- *
- * @param content 用户提交的原始正文。
- * @returns 去除首尾空白后的正文；如果为空或超过限制则返回 null。
- */
-function normalizeContent(content: string): string | null {
-  const trimmed = content.trim()
-
-  if (!trimmed || trimmed.length > CONTENT_LIMIT) {
-    return null
-  }
-
-  return trimmed
 }
 
 /**

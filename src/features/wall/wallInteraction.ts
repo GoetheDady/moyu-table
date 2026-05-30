@@ -19,8 +19,8 @@ export type WallPointerSession = {
 
 /** 表示指针移动后需要同步给界面的相机、悬停和选择状态。 */
 export type WallPointerMove = {
-  camera: Camera
-  hoveredSelection: Selection['coord']
+  camera: Camera | null
+  hoveredCoord: Coord | null
   shouldClearSelection: boolean
   session: WallPointerSession
 }
@@ -64,6 +64,15 @@ export function moveWallPointer(
   grid: PerspectiveGrid,
   hasSelection: boolean,
 ): WallPointerMove {
+  if (!session.isDragging) {
+    return {
+      camera: null,
+      hoveredCoord: grid.screenToCell(point),
+      shouldClearSelection: false,
+      session,
+    }
+  }
+
   const distance = Math.abs(point.x - session.lastPoint.x) + Math.abs(point.y - session.lastPoint.y)
   const nextSession = {
     ...session,
@@ -73,26 +82,10 @@ export function moveWallPointer(
 
   return {
     camera: grid.cameraForAnchor(nextSession.anchorWorld, point),
-    hoveredSelection: grid.screenToCell(point),
+    hoveredCoord: null,
     shouldClearSelection: hasSelection && nextSession.totalDistance > CLEAR_SELECTION_DISTANCE,
     session: nextSession,
   }
-}
-
-/**
- * 计算指针悬停命中的网格坐标。
- *
- * @param point 当前指针屏幕坐标。
- * @param grid 当前透视网格工具对象。
- * @param isDragging 当前是否正在拖拽。
- * @returns 非拖拽时返回命中的单元格坐标；拖拽时返回 null 以抑制 hover。
- */
-export function hoverWallAtPoint(point: Point, grid: PerspectiveGrid, isDragging: boolean): Coord | null {
-  if (isDragging) {
-    return null
-  }
-
-  return grid.screenToCell(point)
 }
 
 /**

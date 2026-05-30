@@ -1,22 +1,22 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createCellClient, type CreateClientCellResult } from '../../data/cellClient'
-import { checkCellAuthoring, type CellAuthoringCheckResult } from '../../domain/cells/cellAuthoring'
+import { createCellClient } from '../../data/cellClient'
 import { JUMP_ANIMATION_MS } from '../../domain/cells/constants'
+import { getCellCreateFailureMessage, getCellWriteReadiness } from '../../domain/cells/cellWriting'
 import {
   cameraForCellCenter,
   clamp,
   createPerspectiveGrid,
   easeInOutCubic,
 } from '../../domain/cells/geometry'
-import type { Camera, Cell, CellRect, Coord, Selection } from '../../domain/cells/types'
+import type { Camera, CellRect, Coord, Selection } from '../../domain/cells/types'
 import { FloatingPanels } from './FloatingPanels'
 import { GridCanvas } from './GridCanvas'
 import { JumpDock } from './JumpDock'
+import { useVisibleCellLoading } from './visibleCellLoading'
 
 const initialViewport = { width: 1280, height: 720 }
-const CELL_FETCH_DEBOUNCE_MS = 220
 
 /**
  * 渲染 moyu-table 的主应用，并维护网格内容、相机、缩放和选中态。
@@ -27,7 +27,6 @@ function AppWall() {
   const jumpAnimationRef = useRef<number | null>(null)
 
   const cellClient = useMemo(() => createCellClient(), [])
-  const [cells, setCells] = useState<Cell[]>([])
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 32 })
   const [zoom, setZoom] = useState(1)
   const [viewport, setViewport] = useState(initialViewport)
@@ -37,11 +36,11 @@ function AppWall() {
   const [isJumpOpen, setIsJumpOpen] = useState(false)
   const [jumpX, setJumpX] = useState('0')
   const [jumpY, setJumpY] = useState('0')
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [authoringError, setAuthoringError] = useState<string | null>(null)
   const [isSubmittingCell, setIsSubmittingCell] = useState(false)
 
   const grid = useMemo(() => createPerspectiveGrid({ camera, zoom, viewport }), [camera, zoom, viewport])
+  const { cells, loadError, rememberCreatedCell } = useVisibleCellLoading(grid, cellClient)
 
   /**
    * 取消当前正在执行的坐标跳转动画。
@@ -67,38 +66,6 @@ function AppWall() {
   }, [])
 
   useEffect(() => cancelJumpAnimation, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const range = grid.visibleCellRange()
-
-    /**
-     * 从后端读取当前可见范围内的格子。
-     *
-     * @returns Promise，无显式返回值；副作用是用接口数据替换当前画布格子。
-     */
-    const loadVisibleCells = async () => {
-      const result = await cellClient.listCellsInRange(range, { signal: controller.signal })
-
-      if (result.status === 'loaded') {
-        setCells(result.cells)
-        setLoadError(null)
-      }
-
-      if (result.status === 'request-failed') {
-        setLoadError('附近格子暂时加载失败，移动或缩放时会自动重试。')
-      }
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void loadVisibleCells()
-    }, CELL_FETCH_DEBOUNCE_MS)
-
-    return () => {
-      controller.abort()
-      window.clearTimeout(timeoutId)
-    }
-  }, [cellClient, grid])
 
   /**
    * 更新用户草稿，并清理上一轮写入失败提示。
@@ -182,38 +149,36 @@ function AppWall() {
   const handleSubmit = async () => {
     if (!selection || selection.mode !== 'edit' || isSubmittingCell) return
 
-    const checkResult = checkCellAuthoring(cells, selection.coord, draft)
-    if (checkResult.status !== 'ready') {
-      setAuthoringError(getAuthoringFailureMessage(checkResult.status))
+    const readiness = getCellWriteReadiness(
+      {
+        x: selection.coord.x,
+        y: selection.coord.y,
+        type: 'THOUGHT',
+        content: draft,
+      },
+      cells,
+    )
+
+    if (readiness.result.status !== 'ready') {
+      setAuthoringError(readiness.message)
       return
     }
 
     setIsSubmittingCell(true)
     setAuthoringError(null)
 
-    const createResult = await cellClient.createCell({
-      x: selection.coord.x,
-      y: selection.coord.y,
-      type: 'THOUGHT',
-      content: draft,
-    })
+    const createResult = await cellClient.createCell(readiness.result.write)
 
     setIsSubmittingCell(false)
 
     if (createResult.status !== 'created') {
-      setAuthoringError(getCreateCellFailureMessage(createResult))
+      setAuthoringError(getCellCreateFailureMessage(createResult.status))
       return
     }
 
     const created = createResult.cell
 
-    setCells((currentCells) => {
-      if (currentCells.some((cell) => cell.x === created.x && cell.y === created.y)) {
-        return currentCells
-      }
-
-      return [...currentCells, created]
-    })
+    rememberCreatedCell(created)
     setSelection({ mode: 'read', coord: selection.coord, cell: created })
     setDraft('')
   }
@@ -312,39 +277,3 @@ function getPanelStyle(rect: CellRect, width: number, height: number) {
 }
 
 export default AppWall
-
-/**
- * 将前端写入前置检查结果转换为用户可读提示。
- *
- * @param status 前置检查失败状态。
- * @returns 可以显示在编辑面板里的错误提示。
- */
-function getAuthoringFailureMessage(status: Exclude<CellAuthoringCheckResult['status'], 'ready'>): string {
-  if (status === 'empty-draft') {
-    return '先写点内容再锁定这个格子。'
-  }
-
-  if (status === 'too-long') {
-    return '内容超过字数上限，删短一点再试。'
-  }
-
-  return '这个格子已经有内容了，换一个空格子试试。'
-}
-
-/**
- * 将后端写入结果转换为用户可读提示。
- *
- * @param result 创建格子失败结果。
- * @returns 可以显示在编辑面板里的错误提示。
- */
-function getCreateCellFailureMessage(result: Exclude<CreateClientCellResult, { status: 'created' }>): string {
-  if (result.status === 'invalid-content') {
-    return '内容为空或超过上限，调整后再写入。'
-  }
-
-  if (result.status === 'occupied') {
-    return '这个格子刚刚被占用了，换一个空格子试试。'
-  }
-
-  return '写入失败，请稍后再试。'
-}

@@ -1,31 +1,24 @@
-import { Prisma } from '@prisma/client'
 import { describe, expect, test } from 'vitest'
 import {
   CELL_READ_LIMIT,
   createCellRepository,
-  type CellCreateArgs,
   type CellPersistenceStore,
   type PersistedCellRecord,
 } from '../src/data/cellRepository'
+import type { PreparedCellWrite } from '../src/domain/cells/cellWriting'
 
 describe('Cell repository', () => {
   /**
-   * 验证按范围读取格子时，Repository 会隐藏 Prisma 查询参数并返回前端格子模型。
+   * 验证按范围读取格子时，Repository 会隐藏持久化细节并返回前端格子模型。
    *
-   * Repository 是数据仓库模块，用来把底层数据库读写细节集中在一个 Interface 后面。
+   * Repository 是数据仓库 Module，用来把底层数据库读写细节集中在一个 Interface 后面。
    */
   test('按单元格坐标范围读取并映射为墙面格子', async () => {
     const createdAt = new Date('2026-05-29T09:00:00.000Z')
     const store = createMemoryStore({
-      findMany: async (args) => {
-        expect(args).toEqual({
-          where: {
-            x: { gte: -2, lte: 4 },
-            y: { gte: 5, lte: 9 },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: CELL_READ_LIMIT,
-        })
+      listCellsInRange: async (range, limit) => {
+        expect(range).toEqual({ minX: -2, maxX: 4, minY: 5, maxY: 9 })
+        expect(limit).toBe(CELL_READ_LIMIT)
 
         return [
           {
@@ -73,19 +66,22 @@ describe('Cell repository', () => {
    */
   test('创建格子时整理正文并返回墙面格子', async () => {
     const createdAt = new Date('2026-05-29T10:00:00.000Z')
-    let createArgs: CellCreateArgs | null = null
+    let persistedCell: PreparedCellWrite | null = null
     const store = createMemoryStore({
-      create: async (args) => {
-        createArgs = args
+      insertCell: async (cell) => {
+        persistedCell = cell
 
         return {
-          id: 'cell-2',
-          x: args.data.x,
-          y: args.data.y,
-          type: args.data.type,
-          title: args.data.title,
-          content: args.data.content,
-          createdAt,
+          status: 'inserted',
+          cell: {
+            id: 'cell-2',
+            x: cell.x,
+            y: cell.y,
+            type: cell.type,
+            title: cell.title,
+            content: cell.content,
+            createdAt,
+          },
         }
       },
     })
@@ -98,14 +94,12 @@ describe('Cell repository', () => {
       content: '  不想开会\n想喝咖啡  ',
     })
 
-    expect(createArgs).toEqual({
-      data: {
-        x: -3,
-        y: 8,
-        type: 'TREE_HOLE',
-        title: '不想开会',
-        content: '不想开会\n想喝咖啡',
-      },
+    expect(persistedCell).toEqual({
+      x: -3,
+      y: 8,
+      type: 'TREE_HOLE',
+      title: '不想开会',
+      content: '不想开会\n想喝咖啡',
     })
     expect(result).toMatchObject({
       status: 'created',
@@ -121,19 +115,13 @@ describe('Cell repository', () => {
   })
 
   /**
-   * 验证创建格子时，Repository 会把 Prisma 唯一约束冲突翻译为 occupied 状态。
+   * 验证创建格子时，Repository 会把持久化坐标冲突翻译为 occupied 状态。
    *
-   * 唯一约束冲突表示同一个坐标已经存在格子，不应该把 Prisma 错误码泄漏给调用方。
+   * 坐标冲突表示同一个坐标已经存在格子，不应该把底层错误泄漏给调用方。
    */
   test('创建格子时把坐标冲突翻译为 occupied', async () => {
     const store = createMemoryStore({
-      create: async () => {
-        throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-          code: 'P2002',
-          clientVersion: 'test',
-          meta: { target: ['x', 'y'] },
-        })
-      },
+      insertCell: async () => ({ status: 'occupied' }),
     })
     const repository = createCellRepository(store)
 
@@ -150,7 +138,7 @@ describe('Cell repository', () => {
   test('创建格子时拒绝空白内容', async () => {
     let didCallCreate = false
     const store = createMemoryStore({
-      create: async () => {
+      insertCell: async () => {
         didCallCreate = true
         throw new Error('不应该写入空白内容')
       },
@@ -167,13 +155,13 @@ describe('Cell repository', () => {
 /**
  * 创建测试用内存持久化适配器。
  *
- * @param overrides 需要覆盖的 findMany 或 create 行为。
+ * @param overrides 需要覆盖的读取或写入行为。
  * @returns 满足 CellPersistenceStore Interface 的测试适配器。
  */
 function createMemoryStore(overrides: Partial<CellPersistenceStore>): CellPersistenceStore {
   return {
-    findMany: overrides.findMany ?? defaultFindMany,
-    create: overrides.create ?? defaultCreate,
+    listCellsInRange: overrides.listCellsInRange ?? defaultListCellsInRange,
+    insertCell: overrides.insertCell ?? defaultInsertCell,
   }
 }
 
@@ -182,7 +170,7 @@ function createMemoryStore(overrides: Partial<CellPersistenceStore>): CellPersis
  *
  * @returns 空格子记录列表。
  */
-async function defaultFindMany(): Promise<PersistedCellRecord[]> {
+async function defaultListCellsInRange(): Promise<PersistedCellRecord[]> {
   return []
 }
 
@@ -191,6 +179,6 @@ async function defaultFindMany(): Promise<PersistedCellRecord[]> {
  *
  * @returns 永不返回，调用时抛出错误。
  */
-async function defaultCreate(): Promise<PersistedCellRecord> {
-  throw new Error('测试需要显式提供 create 行为')
+async function defaultInsertCell(): ReturnType<CellPersistenceStore['insertCell']> {
+  throw new Error('测试需要显式提供 insertCell 行为')
 }

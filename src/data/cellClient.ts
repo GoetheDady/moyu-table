@@ -1,4 +1,5 @@
-import type { CellContentType } from '../domain/cells/cellPresentation'
+import { getCreateClientFailureStatus, type CreateClientCellFailureStatus } from './cellTransport'
+import type { CellContentType } from '../domain/cells/cellContent'
 import type { CellRange } from '../domain/cells/geometry'
 import type { Cell } from '../domain/cells/types'
 
@@ -22,9 +23,10 @@ export type ListClientCellsResult =
 /** 表示浏览器端写入格子的结果，调用方不需要知道后端状态码。 */
 export type CreateClientCellResult =
   | { status: 'created'; cell: Cell }
-  | { status: 'invalid-content' }
-  | { status: 'occupied' }
-  | { status: 'request-failed' }
+  | { status: CreateClientCellFailureStatus }
+
+/** 表示浏览器端格子数据访问 Module 的完整 Interface。 */
+export type CellClient = ReturnType<typeof createCellClient>
 
 type ListCellsPayload = {
   cells: Cell[]
@@ -106,16 +108,9 @@ export function createCellClient(fetcher: CellClientFetch = fetch) {
           }),
         })
 
-        if (response.status === 400) {
-          return { status: 'invalid-content' }
-        }
-
-        if (response.status === 409) {
-          return { status: 'occupied' }
-        }
-
-        if (!response.ok) {
-          return { status: 'request-failed' }
+        const failureStatus = getCreateClientFailureStatus(response)
+        if (failureStatus) {
+          return { status: failureStatus }
         }
 
         const payload = (await response.json()) as Partial<CreateCellPayload>
