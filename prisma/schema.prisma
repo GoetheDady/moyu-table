@@ -6,6 +6,19 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  nickname     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  cells Cell[]
+
+  @@index([email])
+}
+
 model Cell {
   id        String   @id @default(cuid())
   x         Int
@@ -14,12 +27,35 @@ model Cell {
   title     String?
   content   String
   authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([x, y])
   @@index([x, y])
   @@index([createdAt])
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([token])
 }
 
 enum CellType {

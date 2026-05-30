@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { getCellToneForCoord } from '../domain/cells/cellStyle'
+import { getCellToneForType } from '../domain/cells/cellStyle'
 import {
   getCellContentTypeLabel,
   getContentSubtitle,
@@ -171,7 +171,7 @@ function toWallCell(cell: PersistedCellRecord): Cell {
     ],
     previewOverride: toCellPreview(cell),
     createdAt: cell.createdAt.toISOString(),
-    tone: getCellToneForCoord(coord),
+    tone: getCellToneForType(cell.type),
   }
 }
 

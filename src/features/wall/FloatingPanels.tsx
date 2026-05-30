@@ -1,4 +1,4 @@
-import { getCellDetail } from '../../domain/cells/cellContent'
+import { cellContentTypes, getCellContentTypeLabel, getCellDetail, type CellContentType } from '../../domain/cells/cellContent'
 import { getCellWriteReadiness } from '../../domain/cells/cellWriting'
 import { formatCreatedAt } from '../../domain/cells/text'
 import type { Selection } from '../../domain/cells/types'
@@ -6,11 +6,13 @@ import type { Selection } from '../../domain/cells/types'
 /** FloatingPanels 组件需要的编辑内容、选中态和事件回调。 */
 type FloatingPanelsProps = {
   authoringError: string | null
+  contentType: CellContentType
   draft: string
   isSubmitting: boolean
   panelStyle?: React.CSSProperties
   selection: Selection | null
   onCancelEdit: () => void
+  onContentTypeChange: (type: CellContentType) => void
   onDraftChange: (draft: string) => void
   onSubmit: () => void
 }
@@ -23,11 +25,13 @@ type FloatingPanelsProps = {
  */
 export function FloatingPanels({
   authoringError,
+  contentType,
   draft,
   isSubmitting,
   panelStyle,
   selection,
   onCancelEdit,
+  onContentTypeChange,
   onDraftChange,
   onSubmit,
 }: FloatingPanelsProps) {
@@ -35,12 +39,28 @@ export function FloatingPanels({
     'absolute z-20 box-border rounded-lg border border-moyu-border bg-moyu-panel bg-linear-to-b from-moyu-panel-top to-moyu-panel-bottom shadow-moyu-panel backdrop-blur-2xl'
 
   if (selection?.mode === 'edit') {
-    const draftState = getCellWriteReadiness({ ...selection.coord, content: draft })
+    const draftState = getCellWriteReadiness({ ...selection.coord, type: contentType, content: draft })
 
     return (
       <section className={`${panelClass} p-[18px]`} style={panelStyle}>
-        <div className="mb-2.5 text-sm leading-[1.3] text-[#c7d1da]">
+        <div className="mb-3 text-sm leading-[1.3] text-[#c7d1da]">
           x: {selection.coord.x}, y: {selection.coord.y}
+        </div>
+        <div className="mb-3 flex gap-1.5">
+          {cellContentTypes.map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold leading-none transition-colors ${
+                type === contentType
+                  ? 'bg-white/12 text-[#e8fff2]'
+                  : 'bg-transparent text-[#8899aa] hover:bg-white/6 hover:text-[#c7d6de]'
+              }`}
+              onClick={() => onContentTypeChange(type)}
+            >
+              {getCellContentTypeLabel(type)}
+            </button>
+          ))}
         </div>
         <textarea
           autoFocus

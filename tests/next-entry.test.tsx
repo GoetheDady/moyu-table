@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
+import { SessionProvider } from 'next-auth/react'
 import HomePage from '../app/page'
 
 describe('Next.js 入口', () => {
@@ -10,7 +11,7 @@ describe('Next.js 入口', () => {
    */
   test('首页渲染无限格子墙', async () => {
     const element = await HomePage()
-    const html = renderToStaticMarkup(element)
+    const html = renderToStaticMarkup(<SessionProvider>{element}</SessionProvider>)
 
     expect(html).toContain('moyuTable infinite collaborative wall')
   })

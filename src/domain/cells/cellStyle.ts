@@ -1,3 +1,4 @@
+import type { CellContentType } from './cellContent'
 import type { CellTone, Coord } from './types'
 
 /**
@@ -78,4 +79,22 @@ export const toneMap: Record<CellTone, CellToneStyle> = {
 export function getCellToneForCoord(coord: Coord): CellTone {
   const tones: CellTone[] = ['mint', 'amber', 'cyan', 'coral']
   return tones[Math.abs(coord.x * 7 + coord.y * 13) % tones.length]
+}
+
+/** 内容类型到单元格色调的映射表。 */
+const cellTypeToneMap: Record<CellContentType, CellTone> = {
+  THOUGHT: 'mint',
+  NOTE: 'amber',
+  QUESTION: 'cyan',
+  TREE_HOLE: 'coral',
+}
+
+/**
+ * 根据单元格内容类型稳定地选择色调。
+ *
+ * @param type 持久化格子的内容类型。
+ * @returns 与该内容类型绑定的色调名称；未知类型降级为 mint。
+ */
+export function getCellToneForType(type: CellContentType): CellTone {
+  return cellTypeToneMap[type] ?? 'mint'
 }

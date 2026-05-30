@@ -1,7 +1,9 @@
 'use client'
 
+import { useSession } from 'next-auth/react'
 import { useEffect, useMemo, useState } from 'react'
 import { createCellClient, type CellClient } from '../../data/cellClient'
+import type { CellContentType } from '../../domain/cells/cellContent'
 import { getCellCreateFailureMessage, getCellWriteReadiness } from '../../domain/cells/cellWriting'
 import {
   cameraForCellCenter,
@@ -12,7 +14,9 @@ import type { Camera, CellRect, Coord, Selection } from '../../domain/cells/type
 import { FloatingPanels } from './FloatingPanels'
 import { GridCanvas } from './GridCanvas'
 import { JumpDock } from './JumpDock'
+import { Minimap } from './Minimap'
 import { MouseCoordDisplay } from './MouseCoordDisplay'
+import { AuthModal } from '../auth/AuthModal'
 import { useVisibleCellLoading } from './visibleCellLoading'
 import { useCameraJump } from './useCameraJump'
 
@@ -24,6 +28,7 @@ const initialViewport = { width: 1280, height: 720 }
  * @returns 应用的根 React 节点。
  */
 function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }) {
+  const { data: session } = useSession()
   const cellClient = useMemo(() => injectedCellClient ?? createCellClient(), [injectedCellClient])
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 32 })
   const [zoom, setZoom] = useState(1)
@@ -35,6 +40,8 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
   const [jumpX, setJumpX] = useState('0')
   const [jumpY, setJumpY] = useState('0')
   const [authoringError, setAuthoringError] = useState<string | null>(null)
+  const [contentType, setContentType] = useState<CellContentType>('THOUGHT')
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isSubmittingCell, setIsSubmittingCell] = useState(false)
 
   const grid = useMemo(() => createPerspectiveGrid({ camera, zoom, viewport }), [camera, zoom, viewport])
@@ -71,8 +78,17 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
    * @returns 无返回值，副作用是更新选择状态。
    */
   const handleSelectionChange = (nextSelection: Selection | null) => {
+    if (nextSelection?.mode === 'edit' && !session?.user) {
+      setIsAuthModalOpen(true)
+      return
+    }
+
     setSelection(nextSelection)
     setAuthoringError(null)
+
+    if (nextSelection?.mode === 'edit') {
+      setContentType('THOUGHT')
+    }
   }
 
   /**
@@ -91,6 +107,7 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
 
     setSelection(null)
     setDraft('')
+    setContentType('THOUGHT')
     setAuthoringError(null)
     setHoveredCoord({ x, y })
     animateCameraTo(cameraForCellCenter({ x, y }))
@@ -108,7 +125,7 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
       {
         x: selection.coord.x,
         y: selection.coord.y,
-        type: 'THOUGHT',
+        type: contentType,
         content: draft,
       },
       cells,
@@ -136,6 +153,23 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
     rememberCreatedCell(created)
     setSelection({ mode: 'read', coord: selection.coord, cell: created })
     setDraft('')
+  }
+
+  /**
+   * 处理小地图点击跳转。
+   *
+   * 将小地图返回的世界坐标设置为主画布相机目标，清空选中态后启动跳转动画。
+   *
+   * @param worldX 目标世界 x 坐标。
+   * @param worldY 目标世界 y 坐标。
+   * @returns 无返回值，副作用是清空编辑状态并启动相机跳转动画。
+   */
+  const handleMinimapJump = (worldX: number, worldY: number) => {
+    setSelection(null)
+    setDraft('')
+    setContentType('THOUGHT')
+    setAuthoringError(null)
+    animateCameraTo({ x: worldX, y: worldY })
   }
 
   const panelStyle = selection
@@ -176,6 +210,8 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
 
       <MouseCoordDisplay coord={hoveredCoord && !loadError && !selection ? hoveredCoord : null} />
 
+      <Minimap grid={grid} cellClient={cellClient} onJumpTo={handleMinimapJump} />
+
       {loadError ? (
         <div
           role="status"
@@ -187,6 +223,7 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
 
       <FloatingPanels
         authoringError={authoringError}
+        contentType={contentType}
         draft={draft}
         isSubmitting={isSubmittingCell}
         panelStyle={panelStyle}
@@ -196,9 +233,12 @@ function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }
           setDraft('')
           setAuthoringError(null)
         }}
+        onContentTypeChange={setContentType}
         onDraftChange={handleDraftChange}
         onSubmit={handleSubmit}
       />
+
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </main>
   )
 }

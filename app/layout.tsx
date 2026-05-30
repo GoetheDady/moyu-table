@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import '../src/index.css'
+import { AuthProvider } from '../src/features/auth/AuthProvider'
 
 export const metadata: Metadata = {
   title: '摸鱼表格',
@@ -10,12 +11,14 @@ export const metadata: Metadata = {
  * 渲染 Next.js 全局根布局。
  *
  * @param props.children 当前路由页面内容。
- * @returns 包含语言、页面主体和全局样式的根布局。
+ * @returns 包含语言、认证提供者和全局样式的根布局。
  */
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   )
 }
