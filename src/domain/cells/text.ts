@@ -18,85 +18,6 @@ export type ProjectedTextBox = {
 }
 
 /**
- * 在 Canvas 上按字符测量宽度并绘制自动换行文本。
- *
- * @param context Canvas 2D 绘图上下文。
- * @param text 需要绘制的文本内容。
- * @param x 文本起始 x 坐标。
- * @param y 文本起始 y 坐标。
- * @param maxWidth 单行最大宽度。
- * @param lineHeight 行高。
- * @param maxLines 最多绘制行数。
- * @returns 无返回值，副作用是在 Canvas 上绘制文本。
- */
-export function drawWrappedText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-  maxLines: number,
-) {
-  const paragraphs = text.split('\n')
-  const lines: string[] = []
-
-  for (const paragraph of paragraphs) {
-    let line = ''
-
-    for (const char of paragraph) {
-      const nextLine = line + char
-      if (context.measureText(nextLine).width > maxWidth && line) {
-        lines.push(line)
-        line = char
-      } else {
-        line = nextLine
-      }
-
-      if (lines.length >= maxLines) break
-    }
-
-    if (lines.length >= maxLines) break
-    lines.push(line)
-  }
-
-  const visibleLines = lines.slice(0, maxLines)
-  visibleLines.forEach((line, index) => {
-    const suffix = index === maxLines - 1 && lines.length > maxLines ? '...' : ''
-    context.fillText(`${line}${suffix}`, x, y + index * lineHeight)
-  })
-}
-
-/**
- * 在投影后的单元格局部坐标系中绘制自动换行文本。
- *
- * @param context Canvas 2D 绘图上下文。
- * @param text 需要绘制的文本内容。
- * @param box 投影文字盒子，包含局部坐标轴和尺寸。
- * @param paddingX 水平方向内边距。
- * @param paddingY 垂直方向内边距。
- * @param lineHeight 行高。
- * @param maxLines 最多绘制行数。
- * @returns 无返回值，副作用是临时修改 Canvas transform 并绘制文本；函数结束前会 restore。
- */
-export function drawProjectedWrappedText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  box: ProjectedTextBox,
-  paddingX: number,
-  paddingY: number,
-  lineHeight: number,
-  maxLines: number,
-) {
-  const contentWidth = Math.max(1, box.width - paddingX * 2)
-
-  context.save()
-  context.transform(box.xAxis.x, box.xAxis.y, box.yAxis.x, box.yAxis.y, box.origin.x, box.origin.y)
-  drawWrappedText(context, text, paddingX, paddingY, contentWidth, lineHeight, maxLines)
-  context.restore()
-}
-
-/**
  * 根据单元格四个屏幕角点计算文字绘制盒子。
  *
  * @param points 单元格四个角点，按左上、右上、右下、左下顺序传入。
@@ -124,16 +45,6 @@ export function getProjectedTextBox(points: Point[]): ProjectedTextBox {
     width,
     height,
   }
-}
-
-/**
- * 把单元格内容截断到适合预览绘制的长度。
- *
- * @param content 原始单元格文本。
- * @returns 如果文本过长，返回带省略号的短文本；否则返回原文。
- */
-export function truncateForCell(content: string) {
-  return content.length > 42 ? `${content.slice(0, 41)}...` : content
 }
 
 /**

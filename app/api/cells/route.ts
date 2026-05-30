@@ -22,12 +22,6 @@ const createCellSchema = z.object({
   content: z.string(),
 })
 
-/**
- * 读取指定坐标范围内的格子。
- *
- * @param request Next.js 请求对象，查询参数中需要包含 minX、maxX、minY 和 maxY。
- * @returns JSON 响应，成功时返回当前范围内的格子列表，失败时返回错误信息。
- */
 export async function GET(request: NextRequest) {
   const query = rangeQuerySchema.safeParse(Object.fromEntries(request.nextUrl.searchParams))
 
@@ -40,12 +34,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ cells })
 }
 
-/**
- * 写入一个新的格子。
- *
- * @param request Next.js 请求对象，body 中需要包含 x、y、content 和可选 type。
- * @returns JSON 响应，成功时返回新格子；坐标已占用时返回 409。
- */
 export async function POST(request: NextRequest) {
   const body = createCellSchema.safeParse(await request.json())
 

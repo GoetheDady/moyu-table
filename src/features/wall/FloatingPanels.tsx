@@ -1,4 +1,4 @@
-import { getCellDetail } from '../../domain/cells/cellPresentation'
+import { getCellDetail } from '../../domain/cells/cellContent'
 import { getCellWriteReadiness } from '../../domain/cells/cellWriting'
 import { formatCreatedAt } from '../../domain/cells/text'
 import type { Selection } from '../../domain/cells/types'

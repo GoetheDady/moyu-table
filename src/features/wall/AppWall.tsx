@@ -1,20 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createCellClient } from '../../data/cellClient'
-import { JUMP_ANIMATION_MS } from '../../domain/cells/constants'
+import { useEffect, useMemo, useState } from 'react'
+import { createCellClient, type CellClient } from '../../data/cellClient'
 import { getCellCreateFailureMessage, getCellWriteReadiness } from '../../domain/cells/cellWriting'
 import {
   cameraForCellCenter,
   clamp,
   createPerspectiveGrid,
-  easeInOutCubic,
 } from '../../domain/cells/geometry'
 import type { Camera, CellRect, Coord, Selection } from '../../domain/cells/types'
 import { FloatingPanels } from './FloatingPanels'
 import { GridCanvas } from './GridCanvas'
 import { JumpDock } from './JumpDock'
 import { useVisibleCellLoading } from './visibleCellLoading'
+import { useCameraJump } from './useCameraJump'
 
 const initialViewport = { width: 1280, height: 720 }
 
@@ -23,10 +22,8 @@ const initialViewport = { width: 1280, height: 720 }
  *
  * @returns 应用的根 React 节点。
  */
-function AppWall() {
-  const jumpAnimationRef = useRef<number | null>(null)
-
-  const cellClient = useMemo(() => createCellClient(), [])
+function AppWall({ cellClient: injectedCellClient }: { cellClient?: CellClient }) {
+  const cellClient = useMemo(() => injectedCellClient ?? createCellClient(), [injectedCellClient])
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 32 })
   const [zoom, setZoom] = useState(1)
   const [viewport, setViewport] = useState(initialViewport)
@@ -42,17 +39,7 @@ function AppWall() {
   const grid = useMemo(() => createPerspectiveGrid({ camera, zoom, viewport }), [camera, zoom, viewport])
   const { cells, loadError, rememberCreatedCell } = useVisibleCellLoading(grid, cellClient)
 
-  /**
-   * 取消当前正在执行的坐标跳转动画。
-   *
-   * @returns 无返回值，副作用是取消 requestAnimationFrame 并清空动画引用。
-   */
-  const cancelJumpAnimation = () => {
-    if (jumpAnimationRef.current !== null) {
-      cancelAnimationFrame(jumpAnimationRef.current)
-      jumpAnimationRef.current = null
-    }
-  }
+  const { animateCameraTo, cancelJumpAnimation } = useCameraJump(camera, setCamera)
 
   useEffect(() => {
     const onResize = () => {
@@ -64,8 +51,6 @@ function AppWall() {
 
     return () => window.removeEventListener('resize', onResize)
   }, [])
-
-  useEffect(() => cancelJumpAnimation, [])
 
   /**
    * 更新用户草稿，并清理上一轮写入失败提示。
@@ -87,37 +72,6 @@ function AppWall() {
   const handleSelectionChange = (nextSelection: Selection | null) => {
     setSelection(nextSelection)
     setAuthoringError(null)
-  }
-
-  /**
-   * 平滑移动相机到目标位置。
-   *
-   * @param targetCamera 目标相机坐标。
-   * @returns 无返回值，副作用是启动逐帧动画并持续更新 camera 状态。
-   */
-  const animateCameraTo = (targetCamera: Camera) => {
-    cancelJumpAnimation()
-
-    const startCamera = camera
-    const startedAt = performance.now()
-
-    const step = (now: number) => {
-      const progress = clamp((now - startedAt) / JUMP_ANIMATION_MS, 0, 1)
-      const easedProgress = easeInOutCubic(progress)
-
-      setCamera({
-        x: startCamera.x + (targetCamera.x - startCamera.x) * easedProgress,
-        y: startCamera.y + (targetCamera.y - startCamera.y) * easedProgress,
-      })
-
-      if (progress < 1) {
-        jumpAnimationRef.current = requestAnimationFrame(step)
-      } else {
-        jumpAnimationRef.current = null
-      }
-    }
-
-    jumpAnimationRef.current = requestAnimationFrame(step)
   }
 
   /**

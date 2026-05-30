@@ -18,7 +18,7 @@ export type WallPointerSession = {
 }
 
 /** 表示指针移动后需要同步给界面的相机、悬停和选择状态。 */
-export type WallPointerMove = {
+type WallPointerMove = {
   camera: Camera | null
   hoveredCoord: Coord | null
   shouldClearSelection: boolean

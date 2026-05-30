@@ -1,4 +1,4 @@
-import type { CellTone } from './types'
+import type { CellTone, Coord } from './types'
 
 /**
  * 表示单元格色调对应的一整套绘制颜色。
@@ -67,4 +67,15 @@ export const toneMap: Record<CellTone, CellToneStyle> = {
     coverText: '#fff0eb',
     coverMuted: '#d9aa9b',
   },
+}
+
+/**
+ * 根据坐标稳定地选择一个单元格色调。
+ *
+ * @param coord 单元格坐标。
+ * @returns 与坐标绑定的色调名称。
+ */
+export function getCellToneForCoord(coord: Coord): CellTone {
+  const tones: CellTone[] = ['mint', 'amber', 'cyan', 'coral']
+  return tones[Math.abs(coord.x * 7 + coord.y * 13) % tones.length]
 }

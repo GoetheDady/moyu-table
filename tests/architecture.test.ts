@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { initialCells } from '../src/data/demoCells'
-import { getCellPreview } from '../src/domain/cells/cellPresentation'
+import { getCellPreview } from '../src/domain/cells/cellContent'
 import { CELL_SIZE } from '../src/domain/cells/constants'
 import {
   cameraForCellCenter,

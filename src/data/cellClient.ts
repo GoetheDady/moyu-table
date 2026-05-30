@@ -7,7 +7,7 @@ import type { Cell } from '../domain/cells/types'
 export type CellClientFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /** 表示浏览器端创建格子的输入。 */
-export type CreateClientCellInput = {
+type CreateClientCellInput = {
   x: number
   y: number
   type?: CellContentType

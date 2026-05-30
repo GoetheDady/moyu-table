@@ -2,10 +2,43 @@ import {
   CELL_SIZE,
   MAX_CELL_DRAW_HEIGHT,
   MAX_CELL_DRAW_WIDTH,
-  PERSPECTIVE_STRENGTH,
-  PERSPECTIVE_Y_SCALE,
 } from './constants'
+import {
+  cellBoundsInWorld,
+  cellToWorldY,
+  clamp,
+  coordKey,
+  worldToCellCoord,
+  worldToCellY,
+} from './coordinates'
+import {
+  screenToWorldPoint,
+  worldToScreenPoint,
+} from './projection'
+import {
+  cameraForCellCenter,
+  easeInOutCubic,
+  getCameraForAnchor,
+} from './camera'
 import type { Camera, CellRect, Coord } from './types'
+
+// Re-export from submodules for stable public API
+export {
+  // coordinates
+  cellBoundsInWorld,
+  cellToWorldY,
+  clamp,
+  coordKey,
+  worldToCellCoord,
+  worldToCellY,
+  // projection
+  screenToWorldPoint,
+  worldToScreenPoint,
+  // camera
+  cameraForCellCenter,
+  easeInOutCubic,
+  getCameraForAnchor,
+}
 
 /** 表示浏览器中可绘制区域的尺寸。 */
 export type Viewport = {
@@ -20,11 +53,7 @@ export type GridView = {
   viewport: Viewport
 }
 
-/**
- * 表示当前视口绘制网格线时需要覆盖的世界网格索引范围。
- *
- * y 使用世界坐标方向，适合 Canvas 绘制网格线，不适合直接作为格子查询坐标。
- */
+/** 表示当前视口绘制网格线时需要覆盖的世界网格索引范围（y 为世界方向）。 */
 export type WorldGridRange = {
   startX: number
   endX: number
@@ -32,11 +61,7 @@ export type WorldGridRange = {
   endY: number
 }
 
-/**
- * 表示当前视口读取格子内容时需要覆盖的单元格坐标范围。
- *
- * y 使用用户可见的单元格坐标方向，向上递增，适合传给后端查询 Cell。
- */
+/** 表示当前视口读取格子内容时需要覆盖的单元格坐标范围（y 为单元格方向，向上递增）。 */
 export type CellRange = {
   minX: number
   maxX: number
@@ -51,49 +76,7 @@ type Point = {
 }
 
 /**
- * 生成稳定的坐标键，用于比较或查找同一个网格坐标。
- *
- * @param coord 需要转换的网格坐标。
- * @returns 形如 `x:y` 的字符串键。
- */
-export const coordKey = (coord: Coord) => `${coord.x}:${coord.y}`
-
-/**
- * 把数值限制在指定闭区间内。
- *
- * @param value 原始数值。
- * @param min 允许的最小值。
- * @param max 允许的最大值。
- * @returns 如果 value 超出范围，返回边界值；否则返回 value。
- */
-export const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
-
-/**
- * 把单元格 y 坐标转换为世界 y 方向。
- *
- * @param cellY 单元格 y 坐标，项目约定向上递增。
- * @returns 世界坐标中的 y 值方向，向下为正。
- */
-export const cellToWorldY = (cellY: number) => -cellY
-
-/**
- * 把世界 y 坐标转换为单元格 y 方向。
- *
- * @param worldY 世界坐标中的 y 值。
- * @returns 单元格坐标中的 y 值方向。
- */
-export const worldToCellY = (worldY: number) => -worldY
-
-/**
  * 把屏幕坐标转换为所在的单元格坐标。
- *
- * @param screenX 屏幕 x 坐标。
- * @param screenY 屏幕 y 坐标。
- * @param camera 当前相机位置。
- * @param zoom 当前缩放倍数。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 屏幕点命中的单元格坐标。
  */
 export const screenToCell = (
   screenX: number,
@@ -112,34 +95,7 @@ export const screenToCell = (
 }
 
 /**
- * 把世界坐标转换为所在的单元格坐标。
- *
- * @param worldPoint 世界坐标点。
- * @returns 该世界点所在的单元格坐标。
- */
-export const worldToCellCoord = (worldPoint: Point): Coord => ({
-  x: Math.floor(worldPoint.x / CELL_SIZE),
-  y: Math.floor(worldToCellY(worldPoint.y) / CELL_SIZE),
-})
-
-/**
- * 计算单元格在世界坐标系中的边界。
- *
- * @param coord 单元格坐标。
- * @returns 包含 left、right、top、bottom 的世界坐标边界。
- */
-export const cellBoundsInWorld = (coord: Coord) => ({
-  left: coord.x * CELL_SIZE,
-  right: (coord.x + 1) * CELL_SIZE,
-  top: cellToWorldY(coord.y + 1) * CELL_SIZE,
-  bottom: cellToWorldY(coord.y) * CELL_SIZE,
-})
-
-/**
  * 创建绑定了当前视图状态的透视网格工具对象。
- *
- * @param view 当前相机、缩放和视口状态。
- * @returns 一组基于当前视图的坐标转换、单元格投影和可见范围方法。
  */
 export function createPerspectiveGrid(view: GridView) {
   const { camera, zoom, viewport } = view
@@ -165,10 +121,6 @@ export type PerspectiveGrid = ReturnType<typeof createPerspectiveGrid>
 
 /**
  * 计算当前视口需要绘制的世界网格线索引范围。
- *
- * @param view 当前相机、缩放和视口状态。
- * @param padding 额外扩展的网格数量，用来避免边缘露空。
- * @returns 可见世界网格线的起止索引范围；y 保持世界坐标方向。
  */
 export function getVisibleWorldGridRange(view: GridView, padding = 3): WorldGridRange {
   const visibleCorners = getVisibleWorldCorners(view)
@@ -185,10 +137,6 @@ export function getVisibleWorldGridRange(view: GridView, padding = 3): WorldGrid
 
 /**
  * 计算当前视口需要读取内容的单元格坐标范围。
- *
- * @param view 当前相机、缩放和视口状态。
- * @param padding 额外扩展的格子数量，用来提前加载视口边缘附近内容。
- * @returns 可直接传给后端 Cell 查询的单元格坐标范围；y 使用向上递增的单元格坐标。
  */
 export function getVisibleCellRange(view: GridView, padding = 3): CellRange {
   const visibleCorners = getVisibleWorldCorners(view)
@@ -205,9 +153,6 @@ export function getVisibleCellRange(view: GridView, padding = 3): CellRange {
 
 /**
  * 计算当前视口四个角在世界坐标系中的位置。
- *
- * @param view 当前相机、缩放和视口状态。
- * @returns 视口左上、右上、左下、右下四个屏幕角对应的世界坐标点。
  */
 function getVisibleWorldCorners({ camera, zoom, viewport }: GridView): Point[] {
   return [
@@ -220,13 +165,6 @@ function getVisibleWorldCorners({ camera, zoom, viewport }: GridView): Point[] {
 
 /**
  * 计算单元格投影到屏幕后的四边形和包围盒。
- *
- * @param coord 单元格坐标。
- * @param camera 当前相机位置。
- * @param zoom 当前缩放倍数。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 单元格在屏幕上的投影矩形信息。
  */
 export function getCellRect(
   coord: Coord,
@@ -263,154 +201,7 @@ export function getCellRect(
 }
 
 /**
- * 获取透视投影中心点。
- *
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 屏幕中心点坐标。
- */
-export const getProjectionCenter = (viewportWidth: number, viewportHeight: number) => ({
-  x: viewportWidth / 2,
-  y: viewportHeight / 2,
-})
-
-/**
- * 根据相对 y 坐标计算透视缩放比例。
- *
- * @param relativeY 世界点相对相机的 y 距离。
- * @returns 用于屏幕投影的缩放比例。
- */
-export const getPerspectiveScale = (relativeY: number) => 1 / (1 - relativeY * PERSPECTIVE_STRENGTH)
-
-/**
- * 把世界坐标投影为屏幕坐标。
- *
- * @param worldX 世界 x 坐标。
- * @param worldY 世界 y 坐标。
- * @param nextCamera 用于投影的相机位置。
- * @param nextZoom 用于投影的缩放倍数。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 投影后的屏幕坐标。
- */
-export const worldToScreenPoint = (
-  worldX: number,
-  worldY: number,
-  nextCamera: Camera,
-  nextZoom: number,
-  viewportWidth: number,
-  viewportHeight: number,
-) => {
-  const center = getProjectionCenter(viewportWidth, viewportHeight)
-  const relativeY = worldY - nextCamera.y
-  const scale = getPerspectiveScale(relativeY)
-
-  return {
-    x: center.x + (worldX - nextCamera.x) * nextZoom * scale,
-    y: center.y + relativeY * nextZoom * PERSPECTIVE_Y_SCALE * scale,
-  }
-}
-
-/**
- * 把屏幕坐标反解为世界坐标。
- *
- * @param screenX 屏幕 x 坐标。
- * @param screenY 屏幕 y 坐标。
- * @param nextCamera 当前相机位置。
- * @param nextZoom 当前缩放倍数。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 对应的世界坐标。
- */
-export const screenToWorldPoint = (
-  screenX: number,
-  screenY: number,
-  nextCamera: Camera,
-  nextZoom: number,
-  viewportWidth: number,
-  viewportHeight: number,
-) => {
-  const center = getProjectionCenter(viewportWidth, viewportHeight)
-  const k = (screenY - center.y) / (nextZoom * PERSPECTIVE_Y_SCALE)
-  const relativeY = k / (1 + PERSPECTIVE_STRENGTH * k)
-  const scale = getPerspectiveScale(relativeY)
-
-  return {
-    y: nextCamera.y + relativeY,
-    x: nextCamera.x + (screenX - center.x) / (nextZoom * scale),
-  }
-}
-
-/**
- * 计算保持某个世界点贴住某个屏幕点时所需的相机位置。
- *
- * @param worldPoint 需要锚定的世界坐标点。
- * @param screenPoint 目标屏幕坐标点。
- * @param nextZoom 即将应用的缩放倍数。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 新相机位置。
- */
-export const getCameraForAnchor = (
-  worldPoint: Coord,
-  screenPoint: { x: number; y: number },
-  nextZoom: number,
-  viewportWidth: number,
-  viewportHeight: number,
-): Camera => {
-  const center = getProjectionCenter(viewportWidth, viewportHeight)
-  const k = (screenPoint.y - center.y) / (nextZoom * PERSPECTIVE_Y_SCALE)
-  const relativeY = k / (1 + PERSPECTIVE_STRENGTH * k)
-  const scale = getPerspectiveScale(relativeY)
-
-  return {
-    y: worldPoint.y - relativeY,
-    x: worldPoint.x - (screenPoint.x - center.x) / (nextZoom * scale),
-  }
-}
-
-/**
- * 根据四个投影点绘制一个向中心收缩后的单元格路径。
- *
- * @param context Canvas 2D 绘图上下文。
- * @param points 单元格四个角点，按左上、右上、右下、左下顺序传入。
- * @param inset 向中心收缩的屏幕像素距离。
- * @returns 无返回值，副作用是在 context 当前路径中写入闭合路径。
- */
-export function drawCellPath(
-  context: CanvasRenderingContext2D,
-  points: { x: number; y: number }[],
-  inset: number,
-) {
-  const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length
-  const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length
-
-  context.beginPath()
-  points.forEach((point, index) => {
-    const dx = point.x - centerX
-    const dy = point.y - centerY
-    const length = Math.hypot(dx, dy) || 1
-    const nextPoint = {
-      x: point.x - (dx / length) * inset,
-      y: point.y - (dy / length) * inset,
-    }
-
-    if (index === 0) {
-      context.moveTo(nextPoint.x, nextPoint.y)
-    } else {
-      context.lineTo(nextPoint.x, nextPoint.y)
-    }
-  })
-  context.closePath()
-}
-
-/**
  * 判断单元格投影是否值得绘制。
- *
- * @param rect 单元格投影后的矩形信息。
- * @param viewportWidth 当前视口宽度。
- * @param viewportHeight 当前视口高度。
- * @returns 如果单元格与视口附近相交且投影尺寸合理，返回 true。
  */
 export function isDrawableCell(rect: CellRect, viewportWidth: number, viewportHeight: number) {
   const margin = 160
@@ -422,25 +213,4 @@ export function isDrawableCell(rect: CellRect, viewportWidth: number, viewportHe
   const saneProjection = rect.width <= MAX_CELL_DRAW_WIDTH && rect.height <= MAX_CELL_DRAW_HEIGHT
 
   return intersectsViewport && saneProjection
-}
-
-/**
- * 三次缓入缓出动画曲线。
- *
- * @param t 动画进度，通常在 0 到 1 之间。
- * @returns 平滑后的进度值。
- */
-export const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
-
-/**
- * 计算让指定单元格中心居中时的相机位置。
- *
- * @param coord 目标单元格坐标。
- * @returns 相机应移动到的世界坐标位置。
- */
-export function cameraForCellCenter(coord: Coord): Camera {
-  return {
-    x: (coord.x + 0.5) * CELL_SIZE,
-    y: cellToWorldY(coord.y + 0.5) * CELL_SIZE,
-  }
 }

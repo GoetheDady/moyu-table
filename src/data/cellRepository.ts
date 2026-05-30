@@ -1,21 +1,32 @@
 import { Prisma } from '@prisma/client'
-import { toWallCell, type CellPresentationRecord } from '../domain/cells/cellPresentation'
-import type { CellContentType } from '../domain/cells/cellContent'
+import { getCellToneForCoord } from '../domain/cells/cellStyle'
+import {
+  getCellContentTypeLabel,
+  getContentSubtitle,
+  getContentTitle,
+  type CellContentType,
+} from '../domain/cells/cellContent'
 import { prepareCellWrite, type CellWriteInput, type PreparedCellWrite } from '../domain/cells/cellWriting'
 import type { CellRange } from '../domain/cells/geometry'
-import type { Cell } from '../domain/cells/types'
+import type { Cell, CellPreview, Coord } from '../domain/cells/types'
 import { getPrismaClient } from '../lib/prisma'
-
-export type PersistedCellType = CellContentType
 
 /** 单次按范围读取格子的最大返回数量，避免视口异常时一次返回过多内容。 */
 export const CELL_READ_LIMIT = 500
 
 /** 表示数据库中保存的格子记录，字段保持为持久化模型的最小读取集合。 */
-export type PersistedCellRecord = CellPresentationRecord
+export type PersistedCellRecord = {
+  id: string
+  x: number
+  y: number
+  type: CellContentType
+  title: string | null
+  content: string
+  createdAt: Date
+}
 
 /** 表示新建格子时需要的领域输入。 */
-export type CreatePersistedCellInput = CellWriteInput
+type CreatePersistedCellInput = CellWriteInput
 
 /** 表示创建格子的结果，调用方不需要知道底层 Prisma 错误码。 */
 export type CreatePersistedCellResult =
@@ -139,4 +150,40 @@ export function createCellRepository(store: CellPersistenceStore) {
  */
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+}
+
+/**
+ * 将持久化格子转换成前端画布使用的 Cell 结构。
+ */
+function toWallCell(cell: PersistedCellRecord): Cell {
+  const coord: Coord = { x: cell.x, y: cell.y }
+
+  return {
+    ...coord,
+    id: cell.id,
+    blocks: [
+      {
+        id: `block:text:${cell.id}`,
+        type: 'text',
+        title: cell.title ?? undefined,
+        content: cell.content,
+      },
+    ],
+    previewOverride: toCellPreview(cell),
+    createdAt: cell.createdAt.toISOString(),
+    tone: getCellToneForCoord(coord),
+  }
+}
+
+/**
+ * 为持久化格子生成前端封面配置。
+ */
+function toCellPreview(cell: PersistedCellRecord): CellPreview {
+  return {
+    source: 'template',
+    template: 'text',
+    title: cell.title || getContentTitle(cell.content),
+    subtitle: getContentSubtitle(cell.content),
+    label: getCellContentTypeLabel(cell.type),
+  }
 }

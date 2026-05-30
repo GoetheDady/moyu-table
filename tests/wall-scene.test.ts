@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createWallSceneAnimationStore, syncWallSceneAnimationStore } from '../src/features/wall/wallScene'
+import { createWallSceneAnimationStore, syncWallSceneAnimationStore } from '../src/features/wall/wallSceneAnimation'
 import type { Cell } from '../src/domain/cells/types'
 
 const firstCell: Cell = {

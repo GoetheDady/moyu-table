@@ -3,7 +3,7 @@ import {
   getVisibleCellLoadError,
   mergeVisibleCells,
   runVisibleCellLoad,
-} from '../src/features/wall/visibleCellLoading'
+} from '../src/features/wall/visibleCellLoader'
 import type { CellClient } from '../src/data/cellClient'
 import type { PerspectiveGrid } from '../src/domain/cells/geometry'
 import type { Cell } from '../src/domain/cells/types'

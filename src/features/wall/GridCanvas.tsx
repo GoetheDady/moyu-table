@@ -9,11 +9,13 @@ import {
   type WallPointerSession,
 } from './wallInteraction'
 import {
-  createWallSceneAnimationStore,
   drawWallScene,
   resizeCanvasForWallScene,
-  syncWallSceneAnimationStore,
 } from './wallScene'
+import {
+  createWallSceneAnimationStore,
+  syncWallSceneAnimationStore,
+} from './wallSceneAnimation'
 
 /** GridCanvas 组件需要的外部状态和回调。 */
 type GridCanvasProps = {

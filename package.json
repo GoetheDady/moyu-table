@@ -6,23 +6,33 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "clean": "rm -rf .next",
     "build": "prisma generate && next build",
     "start": "next start",
     "test": "vitest run",
     "check:architecture": "vitest run tests/architecture.test.ts",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
+    "prisma:seed": "tsx --env-file=.env prisma/seed.ts",
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "dotenv": "^17.4.2",
     "next": "^16.2.6",
     "pg": "^8.21.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0",
     "zod": "^4.4.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "sharp"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
